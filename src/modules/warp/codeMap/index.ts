@@ -1,459 +1,372 @@
-/* eslint-disable no-prototype-builtins */
-import { parse } from 'himalaya'
-import cssbeautify from 'cssbeautify'
-import * as Css from 'json-to-css'
-// import { validate } from 'csstree-validator'
-import css2json from 'css2json'
+import type { CanvasItem } from '../../../components/canvas/types';
+import type { SvelteAST, Element } from './types';
+import { SvelteParser } from './parser';
+import { parse } from 'svelte/compiler';
+import cssbeautify from 'cssbeautify';
 
-const validateCss = window.require('css-validator')
-const beautify = window.require('simply-beautiful')
-
-const linting_options = {
-	indent_size: 4,
-	space_before_conditional: true,
-	jslint_happy: true,
-	max_char: 0
+interface CodeMapping {
+    code: string;
+    lineStart: number;
+    lineEnd: number;
+    item: CanvasItem;
 }
 
-const stockWidgets = ['image', 'button', 'image', 'label', 'textBox', 'textInput', 'videoPlayer']
-const importRE = /import(?:["'\s]*([\w*{}\n, ]+)from\s*)?["'\s]*([@\w/_-]+)["'\s].*/g
-
 export class CodeMap {
-	lang: string
-	constructor(lang: string) {
-		this.lang = lang
-	}
+    constructor(private language: string) {}
 
-	public validateCssString(cssString: string): boolean {
-		const validateCSS = validateCss(cssString)
-		if (validateCSS === false) {
-			return false
-		}
-		return true
-	}
+    validateCssString(css: string): boolean {
+        try {
+            // Simple validation - try parsing as style object
+            const styleEl = document.createElement('style');
+            styleEl.textContent = css;
+            document.head.appendChild(styleEl);
+            document.head.removeChild(styleEl);
+            return true;
+        } catch (e) {
+            console.error('Invalid CSS:', e);
+            return false;
+        }
+    }
 
-	public mapToCode(canvas: Record<string, unknown>, oldCode: string): string {
-		const items: Array<Record<string, unknown>> = canvas.items as Array<Record<string, unknown>>
-		let scriptItems = ``
-		let mainItems = ``
-		let cssItems = ``
-		const scriptTag: string = this.removeWarpImports(oldCode)
-		const styleTag: string = this.removeWarpStyles(oldCode, items)
-		// if (oldCode.includes('<script lang="ts">') && oldCode.includes('</script>')) {
-		// 	scriptTag = oldCode.split('<script')[1].split('>')[1].split('</script')[0] ?? ''
-		// 	const extractedWarpImports = [...scriptTag.matchAll(importRE)]
-		// 	for (const item of extractedWarpImports) {
-		// 		if (item[0].includes('warp')) {
-		// 			console.log(`stripping old import: ${item[0]}`)
-		// 			if (scriptTag.includes(item[0])) {
-		// 				console.log('old import existed')
-		// 			}
-		// 			scriptTag = scriptTag.replaceAll(item[0].trim(), '')
-		// 		}
-		// 	}
-		// }
+    convertJSONToCSS(styleObj: Record<string, Record<string, string>>): string {
+        const cssStrings: string[] = [];
+        
+        for (const [selector, styles] of Object.entries(styleObj)) {
+            const styleString = Object.entries(styles)
+                .map(([prop, value]) => `${prop}: ${value};`)
+                .join(' ');
+            
+            cssStrings.push(`${selector} { ${styleString} }`);
+        }
 
-		for (const item of items) {
-			const widgetType: string = item.widget as string
-			const widgetID: string = item.id as string
-			let widgetValue: string = item.value as string
-			let contentType: string = item.contentsType as string
+        return cssbeautify(cssStrings.join('\n'), {
+            indent: '  ',
+            autosemicolon: true
+        });
+    }
 
-			if (!widgetValue) {
-				widgetValue = ''
-			}
-			if (!contentType) {
-				contentType = 'slot'
-			}
+    convertCSSToJSON(css: string): Record<string, Record<string, string>> {
+        const result: Record<string, Record<string, string>> = {};
+        
+        // Simple CSS parser
+        const rules = css.split('}').filter(rule => rule.trim());
+        
+        for (const rule of rules) {
+            const [selector, styles] = rule.split('{').map(s => s.trim());
+            if (!selector || !styles) continue;
+            
+            const styleObj: Record<string, string> = {};
+            styles.split(';').forEach(style => {
+                const [prop, value] = style.split(':').map(s => s.trim());
+                if (prop && value) {
+                    styleObj[prop] = value;
+                }
+            });
+            
+            result[selector] = styleObj;
+        }
+        
+        return result;
+    }
+}
 
-			if (item.style) {
-				cssItems = cssItems + this.extractStyleAndCodeify(item)
-			}
+export class CodeGenerator {
+    private static indentLevel = 0;
+    private static indent() {
+        return '  '.repeat(this.indentLevel);
+    }
 
-			if (!scriptItems.includes(`{ ${CodeMap.capFirstLetter(widgetType)} }`)) {
-				if (stockWidgets.includes(widgetType)) {
-					scriptItems =
-						scriptItems +
-						`import { ${CodeMap.capFirstLetter(widgetType)} } from "@components/warp/"
-	`
-				}
-			}
+    static generateComponentCode(item: CanvasItem): string {
+        const styleKey = Object.keys(item.style)[0];
+        const styles = item.style[styleKey];
+        const styleString = Object.entries(styles)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join('; ');
 
-			const widget = this.transformTemplateToWidget({
-				type: contentType,
-				widget: widgetType,
-				value: widgetValue,
-				id: widgetID,
-				item
-			})
+        switch (item.widget) {
+            case 'container':
+                return `
+${this.indent()}<div class="container" style="${styleString}">
+${this.indent()}  ${item.value || ''}
+${this.indent()}</div>`;
 
-			if (item === items[items.length - 1]) {
-				mainItems = mainItems + `${widget}`
-			} else {
-				mainItems =
-					mainItems +
-					`${widget}
-            `
-			}
-		}
+            case 'label':
+                return `${this.indent()}<div class="label" style="${styleString}">${item.value || ''}</div>`;
 
-		return beautify.html(
-			`
-        <script lang="${this.lang}">
-            ${scriptItems.trim()}
-			${scriptTag.trim()}
-        </script>
+            case 'button':
+                return `${this.indent()}<button class="button" style="${styleString}">${item.value || ''}</button>`;
 
-        <main>
-            ${mainItems.trim()}
-        </main>
+            case 'image':
+                return `${this.indent()}<img src="${item.value}" alt="Canvas Image" style="${styleString}" />`;
 
-		<style>
-			${cssItems.trim()}
-			${styleTag.trim()}
-		</style>
-        `,
-			linting_options
-		)
-	}
+            case 'scrollContainer':
+                return `
+${this.indent()}<div class="scroll-container" style="${styleString}">
+${this.indent()}  ${item.value || ''}
+${this.indent()}</div>`;
 
-	public convertCSSJSONtoInline(css: Record<string, unknown>, id: string): string {
-		let styled = ''
-		let isGlobalStyle = false
-		if (!id.includes('placeholder')) {
-			if (css.hasOwnProperty(`:global(${id})`)) {
-				isGlobalStyle = true
-			}
-			const mapped = this.convertJSONToCSS(css)
+            case 'videoPlayer':
+                return `${this.indent()}<video src="${item.value}" controls style="${styleString}" />`;
 
-			if (mapped) {
-				const validateCSS = validateCss(mapped)
-				if (!validateCSS) {
-					console.log(`Invalid CSS on widget ${id} : ${validateCSS}`)
-					return ``
-				}
-				let styleSplit
-				if (isGlobalStyle) {
-					styleSplit = mapped.split(`:global(#${id})`)
-				} else {
-					styleSplit = mapped.split(id)
-				}
+            default:
+                return '';
+        }
+    }
 
-				if (styleSplit?.length > 0 && styleSplit[1]) {
-					const splitValue = styleSplit[1].trim()
-					if (splitValue?.includes('{') && splitValue?.includes('}')) {
-						styled = styleSplit[1].replace('{', '').replace('}', '').trim()
-					}
-				}
-			}
-		}
-		return styled
-	}
+    static generateFullComponent(items: CanvasItem[]): string {
+        return `<script lang="ts">
+  // Component logic here
+</script>
 
-	public convertCodeToCanvas(code: string): Array<unknown> {
-		const json = parse(code)
+<div class="canvas-content">
+${items.map(item => this.generateComponentCode(item)).join('\n')}
+</div>
 
-		let canvas = []
-		const cssItems = []
+<style>
+  .canvas-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
 
-		for (const item of json) {
-			if (item.tagName === 'main') {
-				for (const inner of item.children) {
-					if (inner.type === 'element') {
-						const mappedElement = this.transformCodeToCanvas(inner)
-						if (mappedElement) {
-							canvas.push(mappedElement)
-						}
-					}
-				}
-			} else if (item.tagName === 'style') {
-				for (const style of item.children) {
-					if (style.type === 'text') {
-						const formatted = this.convertCSSToJSON(style.content)
+  .container {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+  }
 
-						if (formatted) {
-							cssItems.push(formatted)
-						}
-					}
-				}
-			}
-		}
+  .label {
+    position: absolute;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
 
-		canvas = this.mapStylesToAllCanvasItems(canvas, cssItems)
+  .button {
+    position: absolute;
+    cursor: pointer;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
 
-		return canvas
-	}
+  .scroll-container {
+    position: absolute;
+    overflow: auto;
+  }
+</style>`;
+    }
 
-	private removeWarpStyles(code: string, canvas: Array<Record<string, unknown>>): string {
-		let styleTag = ``
-		if (code.includes('<style>') && code.includes('</style>')) {
-			styleTag = code.split('<style')[1].split('>')[1].split('</style')[0] ?? ''
-			const styleConversion = this.convertCSSToJSON(styleTag)
-			for (const item of canvas) {
-				if (styleConversion[`#${item.widget}${item.id}`]) {
-					delete styleConversion[`#${item.widget}${item.id}`]
-				} else if (styleConversion[`:global(#${item.widget}${item.id})`]) {
-					delete styleConversion[`:global(#${item.widget}${item.id})`]
-				}
-			}
-			styleTag = this.convertJSONToCSS(styleConversion)
-		}
-		return styleTag
-	}
+    static parseComponentCode(code: string): CanvasItem[] {
+        try {
+            const parsed = SvelteParser.parseCode(code);
+            const mainElement = parsed.ast.html.children[0] as Element;
+            if (!mainElement) return [];
 
-	private removeWarpImports(code: string): string {
-		let scriptTag = ``
-		if (
-			(code.includes('<script lang="ts">') || code.includes('<script>')) &&
-			code.includes('</script>')
-		) {
-			scriptTag = code.split('<script')[1].split('>')[1].split('</script')[0] ?? ''
-			const extractedWarpImports = [...scriptTag.matchAll(importRE)]
-			for (const item of extractedWarpImports) {
-				if (item[0].includes('warp')) {
-					scriptTag = scriptTag.replaceAll(item[0].trim(), '')
-				}
-			}
-		}
-		return beautify.js(scriptTag, linting_options)
-	}
+            const parsedElement = SvelteParser.parseElement(mainElement, code);
+            return SvelteParser.convertToCanvasItems(parsedElement);
+        } catch (error) {
+            console.error('Failed to parse component code:', error);
+            return [];
+        }
+    }
 
-	private mapStylesToAllCanvasItems(canvas, cssItems) {
-		if (canvas?.length > 0 && cssItems?.length > 0) {
-			for (let i = 0; i < canvas.length; i++) {
-				const item = canvas[i]
-				const id = `#${item.widget}${item.id}`
+    static updateComponentCode(code: string, items: CanvasItem[]): string {
+        try {
+            const parsed = SvelteParser.parseCode(code);
+            
+            // Preserve script content
+            const scriptContent = parsed.script || '// Component logic';
+            
+            // Generate new template content
+            const templateContent = items.map(item => this.generateComponentCode(item)).join('\n');
+            
+            // Preserve custom styles by merging with generated ones
+            const existingStyles = parsed.style || '';
+            const generatedStyles = this.generateBaseStyles();
+            
+            return `<script lang="ts">
+${scriptContent}
+</script>
 
-				const styleItem = this.fetchRelevantCSSTag(id, cssItems)
-				if (styleItem) {
-					canvas[i].style = styleItem
-				}
+<div class="canvas-content">
+${templateContent}
+</div>
 
-				const subCanvasItems: Array<Record<string, unknown>> = item.items
+<style>
+${this.mergeStyles(existingStyles, generatedStyles)}
+</style>`;
+        } catch (error) {
+            console.error('Failed to update component code:', error);
+            return code;
+        }
+    }
 
-				if (subCanvasItems?.length > 0) {
-					canvas[i].items = this.mapStylesToAllCanvasItems(subCanvasItems, cssItems)
-				}
-			}
-		}
-		return canvas
-	}
+    static generateAST(items: CanvasItem[]): SvelteAST {
+        const template = items.map(item => this.generateComponentCode(item)).join('\n');
+        const fullCode = `
+<script lang="ts">
+// Component logic
+</script>
 
-	private static capFirstLetter(input: string): string {
-		return input.charAt(0).toUpperCase() + input.slice(1)
-	}
+<div class="canvas-content">
+${template}
+</div>
 
-	private extractStyleAndCodeify(item) {
-		const widgetStyle: Record<string, unknown> = item.style as Record<string, unknown>
-		let contentType: string = item.contentsType as string
-		let cssItems = ``
+<style>
+${this.generateBaseStyles()}
+</style>`;
 
-		const formattetStyle = {}
+        try {
+            return parse(fullCode) as unknown as SvelteAST;
+        } catch (error) {
+            console.error('Failed to generate AST:', error);
+            return {
+                type: 'Root',
+                start: 0,
+                end: fullCode.length,
+                html: {
+                    type: 'Fragment',
+                    children: []
+                }
+            };
+        }
+    }
 
-		for (const [key, value] of Object.entries(widgetStyle)) {
-			if (widgetStyle.hasOwnProperty(key)) {
-				formattetStyle[key] = value
-			}
-		}
+    static getMappings(code: string): CodeMapping[] {
+        const mappings: CodeMapping[] = [];
+        try {
+            const parsed = SvelteParser.parseCode(code);
+            const lines = code.split('\n');
+            let currentLine = 0;
 
-		if (!contentType) {
-			contentType = 'slot'
-		}
+            // Track script block
+            if (parsed.script) {
+                const scriptLines = parsed.script.split('\n').length;
+                currentLine += scriptLines;
+            }
 
-		cssItems = cssItems + this.convertJSONToCSS(formattetStyle)
+            // Track template items
+            parsed.ast.html.children.forEach(child => {
+                if (child.type === 'Element') {
+                    const element = SvelteParser.parseElement(child, code);
+                    const parsedItems = SvelteParser.convertToCanvasItems(element);
+                    
+                    parsedItems.forEach(item => {
+                        const elementLines = code.slice(child.start, child.end).split('\n');
+                        mappings.push({
+                            code: code.slice(child.start, child.end),
+                            lineStart: currentLine,
+                            lineEnd: currentLine + elementLines.length - 1,
+                            item
+                        });
+                        currentLine += elementLines.length;
+                    });
+                }
+            });
 
-		if (contentType === 'slot') {
-			const subItems: Array<Record<string, unknown>> = item.items as Array<
-				Record<string, unknown>
-			> | null
-			if (subItems?.length > 0) {
-				for (const subStyle of subItems) {
-					cssItems = cssItems + this.extractStyleAndCodeify(subStyle)
-				}
-			}
-		}
+            return mappings;
+        } catch (error) {
+            console.error('Failed to generate mappings:', error);
+            return [];
+        }
+    }
 
-		return cssItems
-	}
+    private static generateBaseStyles(): string {
+        return `
+  .canvas-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
 
-	private convertAttributesToInline(attributes) {
-		let stringAttributes = ``
+  .container, .label, .button, .scroll-container {
+    position: absolute;
+    transition: all 0.2s ease;
+  }
 
-		if (attributes?.length > 0) {
-			for (const attribute of attributes) {
-				if (attribute?.key) {
-					stringAttributes += `${attribute.key}="${attribute.value}" `
-				}
-			}
-		}
+  .container {
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
 
-		return stringAttributes
-	}
+  .label {
+    color: #ffffff;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
 
-	private transformTemplateToWidget({ type, widget, value, id, item }): string {
-		const defaultWidgets = [
-			'Label',
-			'Container',
-			'ScrollContainer',
-			'TextBox',
-			'VideoPlayer',
-			'TextInput',
-			'Image',
-			'Button'
-		]
+  .button {
+    cursor: pointer;
+    border: none;
+    background: rgba(100, 181, 246, 0.2);
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
 
-		const attributes = this.convertAttributesToInline(item.attributes)
+  .scroll-container {
+    overflow: auto;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }`;
+    }
 
-		if (type === 'slot') {
-			if (item.items?.length > 0) {
-				let innerItem = '\n'
-				for (const inner of item.items) {
-					const widgetType: string = inner.widget as string
-					const widgetID: string = inner.id as string
-					let widgetValue: string = inner.value as string
-					let contentType: string = inner.contentsType as string
+    private static mergeStyles(existing: string, generated: string): string {
+        // Remove any duplicate base styles from existing
+        const existingStyles = existing.replace(/.canvas-content\s*{[^}]*}/, '')
+            .replace(/.container\s*{[^}]*}/, '')
+            .replace(/.label\s*{[^}]*}/, '')
+            .replace(/.button\s*{[^}]*}/, '')
+            .replace(/.scroll-container\s*{[^}]*}/, '')
+            .trim();
 
-					if (!widgetValue) {
-						widgetValue = ''
-					}
-					if (!contentType) {
-						contentType = 'slot'
-					}
-					const transformedInner = this.transformTemplateToWidget({
-						type: contentType,
-						widget: widgetType,
-						value: widgetValue,
-						id: widgetID,
-						item: inner
-					})
-					innerItem += `${transformedInner}\n`
-				}
-				if (defaultWidgets.includes(CodeMap.capFirstLetter(widget))) {
-					return `<${CodeMap.capFirstLetter(widget)} id="${
-						widget + id
-					}" ${attributes}>${innerItem}</${CodeMap.capFirstLetter(widget)}>`
-				}
-				return `<${widget} id="${widget + id}" ${attributes}>${innerItem}</${widget}>`
-			}
-			if (defaultWidgets.includes(CodeMap.capFirstLetter(widget))) {
-				return `<${CodeMap.capFirstLetter(widget)} id="${
-					widget + id
-				}" ${attributes}>${value}</${CodeMap.capFirstLetter(widget)}>`
-			}
-			return `<${widget} id="${widget + id}" ${attributes}>${value}</${widget}>`
-		}
-		if (defaultWidgets.includes(CodeMap.capFirstLetter(widget))) {
-			return `<${CodeMap.capFirstLetter(widget)} ${type}="${value}" id="${
-				widget + id
-			}" ${attributes}/>`
-		}
-		return `<${widget} ${type}="${value}" id="${widget + id}" ${attributes}/>`
-	}
+        return `${generated}
 
-	private fetchRelevantCSSTag(id: string, css: Array<Record<string, unknown>>) {
-		const obj = {}
-		for (const style of css) {
-			if (style.hasOwnProperty(`:global(${id})`)) {
-				obj[`:global(${id})`] = style[`:global(${id})`]
-				return obj
-			} else if (style.hasOwnProperty(id)) {
-				obj[id] = style[id]
-				return obj
-			}
-		}
-		return null
-	}
+  /* Custom styles */
+${existingStyles}`;
+    }
+}
 
-	private transformCodeToCanvas(item) {
-		let id: number
-		const widget = item.tagName
-		let contentsType = ''
-		let value = ''
-		const attrs: unknown[] = []
+export class CodeSynchronizer {
+    private mappings: CodeMapping[] = [];
+    private lastCode = '';
+    private lastCanvasState: CanvasItem[] = [];
 
-		// Come back to this, this is a blind stab of a fix.
-		if (item.attributes?.length == 0) return null
+    constructor(private onCodeUpdate: (code: string) => void) {}
 
-		for (const obj of item.attributes) {
-			if (obj.key === 'src' || obj.key === 'value') {
-				contentsType = obj.key
-				value = obj.value
-			} else if (obj.key === 'id') {
-				id = parseInt(obj.value.split(item.tagName)[1])
-			} else {
-				if (obj?.key) {
-					const otherObj = {}
-					otherObj[obj.key] = obj.value
-					attrs.push(obj)
-				}
-			}
-		}
+    syncCanvasToCode(items: CanvasItem[]) {
+        const newCode = CodeGenerator.generateFullComponent(items);
+        if (newCode !== this.lastCode) {
+            this.lastCode = newCode;
+            this.onCodeUpdate(newCode);
+        }
+    }
 
-		if (contentsType.length === 0) {
-			contentsType = 'slot'
-		}
+    syncCodeToCanvas(code: string): CanvasItem[] {
+        if (code === this.lastCode) {
+            return this.lastCanvasState;
+        }
 
-		if (value.length === 0 && item.children.length > 0) {
-			for (const child of item.children) {
-				value += child['content'] as string
-			}
-		}
+        const items = CodeGenerator.parseComponentCode(code);
+        this.lastCanvasState = items;
+        this.lastCode = code;
+        return items;
+    }
 
-		if (item.tagName.toLowerCase() === 'container' && item.children?.length > 0) {
-			const items = []
-			for (const child of item.children) {
-				if (child.type === 'element') {
-					const mapped = this.transformCodeToCanvas(child)
-					if (mapped) {
-						items.push(mapped)
-					}
-				}
-			}
-			return {
-				id,
-				name: widget,
-				widget,
-				value,
-				contentsType,
-				items,
-				attributes: attrs
-			}
-		}
+    updateMapping(code: string) {
+        this.mappings = CodeGenerator.getMappings(code);
+    }
 
-		return {
-			id,
-			name: widget,
-			widget,
-			value,
-			contentsType,
-			attributes: attrs
-		}
-	}
+    getItemForCodePosition(line: number): CanvasItem | null {
+        const mapping = this.mappings.find(m => 
+            line >= m.lineStart && line <= m.lineEnd
+        );
+        return mapping?.item || null;
+    }
 
-	private convertCSSToJSON(css: string) {
-		css = css.replaceAll('\t', '').trim()
-
-		if (css.length > 0) {
-			const beautified = cssbeautify(css, {
-				autosemicolon: true
-			})
-
-			return css2json(beautified)
-		}
-
-		return null
-	}
-
-	public convertJSONToCSS(json: Record<string, unknown>): string {
-		if (json) {
-			const r = Css.of(json)
-
-			const beautified = cssbeautify(r, {
-				autosemicolon: true
-			})
-
-			return beautify.css(beautified, linting_options)
-		}
-		return ``
-	}
+    getCodePositionForItem(itemId: number): { start: number; end: number } | null {
+        const mapping = this.mappings.find(m => m.item.id === itemId);
+        return mapping ? { start: mapping.lineStart, end: mapping.lineEnd } : null;
+    }
 }

@@ -1,0 +1,59 @@
+{
+  "productName": "Warp Code",
+  "version": "0.1.0",
+  "identifier": "com.warpcode.dev",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: http: ws:; connect-src ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "label": "launcher",
+        "title": "Warp Code",
+        "width": 1000,
+        "height": 600,
+        "minWidth": 600,
+        "decorations": false,
+        "transparent": true,
+        "url": "/",
+        "center": true,
+        "visible": false
+      }
+    ],
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "frameworks": [],
+      "exceptionDomain": "",
+      "signingIdentity": null,
+      "entitlements": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "webviewInstallMode": {
+        "silent": true,
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

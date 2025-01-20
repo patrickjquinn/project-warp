@@ -1,8 +1,11 @@
 <script land="ts">
 	import { flip } from 'svelte/animate'
 	import { dndzone, TRIGGERS, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action'
-	import Icon from 'svelte-awesome'
-	import { image, square, videoCamera, textHeight } from 'svelte-awesome/icons'
+import Icon from 'svelte-awesome/components/Icon.svelte'
+import image from 'svelte-awesome/icons/image'
+import square from 'svelte-awesome/icons/square'
+import videoCamera from 'svelte-awesome/icons/videoCamera'
+import textHeight from 'svelte-awesome/icons/textHeight'
 
 	let items = [
 		{

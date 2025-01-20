@@ -1,0 +1,92 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Permissions for WarpCode app",
+  "local": true,
+  "windows": [
+    "*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:app:default",
+    "core:path:default",
+    "core:window:default",
+    "core:window:allow-create",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-position",
+    "core:window:allow-set-focus",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-content-protected",
+    "core:window:allow-set-size",
+    "core:window:allow-set-skip-taskbar",
+    "core:window:allow-set-cursor-grab",
+    "core:window:allow-set-cursor-visible",
+    "core:window:allow-set-cursor-icon",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-request-user-attention",
+    "shell:default",
+    "shell:allow-open",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "terminal",
+          "cmd": "sh",
+          "args": [
+            "-c",
+            {
+              "validator": "\\S+"
+            }
+          ]
+        },
+        {
+          "name": "kill-process",
+          "cmd": "kill",
+          "args": [
+            "-9",
+            {
+              "validator": "\\d+"
+            }
+          ]
+        }
+      ]
+    },
+    "dialog:default",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "process:default",
+    "process:allow-restart",
+    "process:allow-exit",
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-mkdir",
+    "fs:allow-exists",
+    "fs:allow-write",
+    "fs:allow-create",
+    "fs:allow-truncate",
+    "fs:allow-write-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$APPDATA/warpcode/**"
+        },
+        {
+          "path": "$HOME/**"
+        }
+      ]
+    },
+    "dialog:default"
+  ]
+}

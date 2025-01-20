@@ -1,0 +1,42 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "WarpCode IDE"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2", features = [ "macos-private-api", "unstable"] }
+tauri-plugin-shell = { version = "2" }
+tauri-plugin-process = { version = "2" }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = { version = "2" }
+tokio = { version = "1.36", features = ["full"] }
+chrono = { version = "0.4.38", features = ["clock", "serde"] }
+notify = "6.1"
+dirs = "5.0"
+urlencoding = "2.1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

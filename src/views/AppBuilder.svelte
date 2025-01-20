@@ -1,23 +1,44 @@
 <script lang="ts">
 	import { HSplitPane, VSplitPane } from 'svelte-split-pane'
-	import Icon from 'svelte-awesome'
-	import { onMount } from 'svelte'
-	import { bell, refresh, comment, codeFork } from 'svelte-awesome/icons'
-	import { CodeMap } from '../modules/warp/codeMap'
+	import { onMount, onDestroy } from 'svelte'
 	import Editor from '../components/Editor.svelte'
 	import UIPallete from '../components/canvas/UIPallete.svelte'
 	import UICanvas from '../components/canvas/UICanvas.svelte'
 	import LayoutEditor from '../components/canvas/LayoutEditor.svelte'
 	import StyleEditor from '../components/canvas/StyleEditor.svelte'
-	import Explorer from '../components/fileExplorer/Explorer.svelte'
+	import { Explorer } from '../components/fileExplorer'
 	import Terminal from '../components/Terminal.svelte'
 	import Warp from '../assets/warpwhite.png'
 	import OnlyTabs from '../components/tabs/OnlyTabs.svelte'
 	import activeFile from '../stores/activeFile'
+	import { invoke } from '@tauri-apps/api/core'
+	import { listen } from '@tauri-apps/api/event'
+	import { syncManager } from '../modules/warp/codeMap/sync'
+	import { canvasStore } from '../components/canvas/stores/canvasStore'
+	import type { CanvasItem } from '../components/canvas/types'
 
-	const { ipcRenderer } = window.require('electron')
+	// Get project path from URL
+	let projectPath: string = ''
+	onMount(() => {
+		const hash = window.location.hash // e.g. "#/editor?path=..."
+		const queryString = hash.split('?')[1] // Get everything after the ?
+		if (queryString) {
+			const params = new URLSearchParams(queryString)
+			const path = params.get('path')
+			if (path) {
+				projectPath = decodeURIComponent(path)
+				console.log('Project path:', projectPath)
+			}
+		}
+	})
 
-	let editorItems: Array<any> = []
+	let editorItems: CanvasItem[] = [];
+	
+	// Subscribe to canvas store to keep editorItems in sync
+	$: if (shouldShowCanvas && $canvasStore.items) {
+		console.log('Canvas store updated:', $canvasStore.items);
+		editorItems = $canvasStore.items;
+	}
 
 	let consoleTabs: Array<Record<string, unknown>> = [
 		{ label: 'TERMINAL', value: 1 },
@@ -25,18 +46,20 @@
 		{ label: 'OUTPUT', value: 3 }
 	]
 
+	let activeConsoleTab = 1
 	let shouldShowCanvas = false
-
 	let activeEditorTab = 1
-
 	let lang = 'html'
 
-	const onEditorTabUpdate = (event) => {
+	const onEditorTabUpdate = (event: CustomEvent) => {
 		activeEditorTab = event.detail
 	}
 
-	let currentCode = '/** Code Will Appear Here **/'
+	const onConsoleTabUpdate = (event: CustomEvent) => {
+		activeConsoleTab = event.detail
+	}
 
+	let currentCode = '/** Code Will Appear Here **/'
 	let editorTabs: Array<Record<string, unknown>> = []
 
 	const upControlTabs: Array<Record<string, unknown>> = [
@@ -45,97 +68,185 @@
 		{ label: 'Style', value: 3 }
 	]
 
-	const updateCanvas = (code?) => {
-		if (!shouldShowCanvas) return
-
+	const updateCanvas = async (code?: string) => {
+		console.log('updateCanvas called with:', { code, shouldShowCanvas });
+		
 		if (code) {
-			currentCode = code
+			currentCode = code;
 		}
-		const codeMap = new CodeMap('ts')
-		const codeCanvas = codeMap.convertCodeToCanvas(currentCode)
-
-		const isSame = JSON.stringify(codeCanvas) == JSON.stringify(editorItems)
-
-		if (isSame) return
-
-		if (codeCanvas?.length > 0) {
-			editorItems = codeCanvas
-		} else {
-			editorItems = []
+		
+		// Always try to sync code to canvas
+		if (shouldShowCanvas) {
+			console.log('Updating canvas with code:', currentCode);
+			await syncManager.updateCanvasFromCode(currentCode);
 		}
 	}
 
-	const shouldCanvasShowByFile = (file) => {
-		if (
-			(file?.path?.includes('components') || file?.path?.includes('pages')) &&
-			file.name.toLowerCase().includes('.svelte')
-		) {
+	const shouldCanvasShowByFile = (file: any) => {
+		// Log file info for debugging
+		console.log('Checking file:', file);
+		
+		if (!file?.path) {
+			console.log('No file path provided');
+			return false;
+		}
+
+		// Normalize path to use forward slashes
+		const normalizedPath = file.path.replace(/\\/g, '/');
+		console.log('Normalized path:', normalizedPath);
+		
+		const isSvelteFile = file?.name?.toLowerCase().includes('.svelte');
+		const pathParts = normalizedPath.split('/');
+		const srcIndex = pathParts.indexOf('src');
+		
+		// Check if file is in src directory
+		if (srcIndex === -1) {
+			console.log('File not in src directory');
+			return false;
+		}
+
+		// Get the path parts after src/
+		const pathAfterSrc = pathParts.slice(srcIndex + 1);
+		console.log('Path after src:', pathAfterSrc);
+		
+		const isInSpecialDir = pathAfterSrc.some(part => 
+			['components', 'pages', 'lib', 'routes'].includes(part)
+		);
+		const isRootSvelte = pathAfterSrc.length === 1;
+		
+		console.log('Path checks:', {
+			isSvelteFile,
+			isInSpecialDir,
+			isRootSvelte,
+			pathAfterSrc
+		});
+		
+		if (isSvelteFile && (isInSpecialDir || isRootSvelte)) {
+			console.log('Setting shouldShowCanvas to true');
+			shouldShowCanvas = true;
+			// Update canvas immediately and again after a delay
+			updateCanvas();
 			setTimeout(() => {
-				shouldShowCanvas = true
-				updateCanvas()
-			}, 300)
+				updateCanvas();
+			}, 300);
 			return
 		}
 		shouldShowCanvas = false
 	}
 
-	ipcRenderer.on('file-sent', async () => {
-		// Come back to this, pass stuff down from a single call.
-		shouldCanvasShowByFile($activeFile)
+	let fileSelectedDirectHandler: ((event: Event) => void) | null = null
+	let fileSelectedHandler: ((event: Event) => void) | null = null
+
+	onMount(async () => {
+		fileSelectedDirectHandler = async (event: Event) => {
+			const customEvent = event as CustomEvent;
+			console.log('AppBuilder received editorFileSelected event:', customEvent.detail);
+			
+			// Ensure we have a valid file object
+			if (!customEvent.detail?.path) {
+				console.error('Invalid file object received:', customEvent.detail);
+				return;
+			}
+			
+			shouldCanvasShowByFile(customEvent.detail);
+			activeFile.set(customEvent.detail);
+			
+			// Update editor tabs
+			const existingTabIndex = editorTabs.findIndex(tab => tab.path === customEvent.detail.path)
+			if (existingTabIndex !== -1) {
+				editorTabs.splice(existingTabIndex, 1)
+			}
+			
+			editorTabs.unshift({
+				label: customEvent.detail.name,
+				value: 1,
+				path: customEvent.detail.path,
+				type: customEvent.detail.type
+			})
+			incrementTabs(customEvent.detail)
+
+			lang = fileExtension(customEvent.detail.name)
+			try {
+				const content = await invoke<string>('read_file_content', { path: customEvent.detail.path });
+				currentCode = content;
+				if (shouldShowCanvas) {
+					console.log('Setting active file in sync manager:', customEvent.detail.path);
+					await syncManager.setActiveFile(customEvent.detail.path);
+				}
+				updateCanvas(content);
+			} catch (error) {
+				console.error('Failed to read file:', error);
+			}
+		}
+
+		fileSelectedHandler = async (event: Event) => {
+			const customEvent = event as CustomEvent;
+			console.log('AppBuilder received fileSelected event:', customEvent.detail);
+			
+			// Ensure we have a valid file object
+			if (!customEvent.detail?.path) {
+				console.error('Invalid file object received:', customEvent.detail);
+				return;
+			}
+			
+			activeFile.set(customEvent.detail);
+			shouldCanvasShowByFile(customEvent.detail);
+
+			// Update editor tabs
+			const existingTabIndex = editorTabs.findIndex(tab => tab.path === customEvent.detail.path)
+			if (existingTabIndex !== -1) {
+				editorTabs.splice(existingTabIndex, 1)
+			}
+
+			editorTabs.unshift({
+				label: customEvent.detail.name,
+				value: 1,
+				path: customEvent.detail.path,
+				type: customEvent.detail.type
+			})
+
+			incrementTabs(customEvent.detail)
+
+			lang = fileExtension(customEvent.detail.name)
+			try {
+				const content = await invoke<string>('read_file_content', { path: customEvent.detail.path })
+				currentCode = content
+				updateCanvas(content)
+			} catch (error) {
+				console.error('Failed to read file:', error)
+			}
+		}
+
+		// Log when event listeners are added
+		console.log('Adding event listeners');
+		window.addEventListener('editorFileSelected', fileSelectedDirectHandler);
+		window.addEventListener('fileSelected', fileSelectedHandler);
+
+		// Read README if it exists in the project
+		if (projectPath) {
+			try {
+				const readmePath = `${projectPath}/README.md`
+				const content = await invoke<string>('read_file_content', { path: readmePath })
+				currentCode = content
+				lang = 'markdown'
+			} catch (error) {
+				console.error('Failed to read README:', error)
+			}
+		}
 	})
 
-	window.addEventListener(
-		'fileSelectedDirect',
-		(event: CustomEvent) => {
-			activeFile.update((file) => event.detail)
-			for (let [index] of editorTabs.entries()) {
-				if (editorTabs[index].path === event.detail.path) {
-					editorTabs.splice(index, 1)
-				}
-			}
-			editorTabs.unshift({
-				label: event.detail.name,
-				value: 1,
-				path: event.detail.path,
-				type: event.detail.type
-			})
-			incrementTabs(event.detail)
-
-			lang = fileExtension(event.detail.name)
-			ipcRenderer.send('open-file', event.detail.path)
-		},
-		false
-	)
-
-	window.addEventListener(
-		'fileSelected',
-		(event: CustomEvent) => {
-			activeFile.update((file) => event.detail)
-
-			for (let [index] of editorTabs.entries()) {
-				if (editorTabs[index].path === event.detail.path) {
-					editorTabs.splice(index, 1)
-				}
-			}
-
-			editorTabs.unshift({
-				label: event.detail.name,
-				value: 1,
-				path: event.detail.path,
-				type: event.detail.type
-			})
-
-			incrementTabs(event.detail)
-
-			lang = fileExtension(event.detail.name)
-			ipcRenderer.send('open-file', event.detail.path)
-		},
-		false
-	)
+	onDestroy(() => {
+		if (fileSelectedDirectHandler) {
+			window.removeEventListener('editorFileSelected', fileSelectedDirectHandler)
+		}
+		if (fileSelectedHandler) {
+			window.removeEventListener('fileSelected', fileSelectedHandler)
+		}
+	})
 
 	const fileExtension = (name: string | string[]) => {
 		if (!name) return 'html'
-		const extension = name.slice(name.lastIndexOf('.') + 1)
+		const extension = name.toString().slice(name.toString().lastIndexOf('.') + 1)
 
 		switch (extension) {
 			case 'svelte':
@@ -150,30 +261,26 @@
 				return 'html'
 			case 'html':
 				return 'svelte'
+			case 'md':
+				return 'markdown'
+			case 'css':
+				return 'css'
 			default:
-				return 'html'
+				return 'plaintext'
 		}
 	}
 
 	const incrementTabs = (file: any) => {
-		for (let [index] of editorTabs.entries()) {
-			editorTabs[index].value = index + 1
-		}
-		editorTabs = [...editorTabs]
+		editorTabs = editorTabs.map((tab, index) => ({
+			...tab,
+			value: index + 1
+		}))
 	}
 
-	const handleCanvasChange = (items) => {
-		const canvas: Record<string, unknown> = { items }
-		console.log(canvas)
-		if (canvas && shouldCanvasShowByFile) {
-			const codeMap: CodeMap = new CodeMap('ts')
-			currentCode = codeMap.mapToCode(canvas, currentCode)
-		}
+	function handleCanvasAction(event: CustomEvent<CanvasItem[]>) {
+		console.log('Canvas action:', event.detail);
+		canvasStore.setItems(event.detail);
 	}
-
-	onMount(async () => {
-		ipcRenderer.send('open-readme')
-	})
 </script>
 
 <main>
@@ -182,18 +289,14 @@
 		<div class="sidenav">
 			<div class="icon-bar">
 				<a class="active first-nav" href="/#"><img width="20" height="20" src="{Warp}" alt="" /></a>
-				<a href="/#"><Icon data="{refresh}" style="color: white; width: 20px; height: 20px" /></a>
-				<a href="/#"><Icon data="{codeFork}" style="color: white; width: 20px; height: 20px" /></a>
-				<a href="/#"><Icon data="{bell}" style="color: white; width: 20px; height: 20px" /></a>
-				<a href="/#"><Icon data="{comment}" style="color: white; width: 20px; height: 20px" /></a>
 			</div>
 		</div>
 		<div class="wrapper">
 			<HSplitPane
 				leftPaneSize="{shouldShowCanvas ? '60%' : '100%'}"
 				rightPaneSize="{shouldShowCanvas ? '40%' : '0%'}"
-				minLeftPaneSize="{shouldShowCanvas ? '250px' : ''}"
-				minRightPaneSize=""
+				minLeftPaneSize="250px"
+				minRightPaneSize="0"
 				updateCallback="{() => {
 					console.log('HSplitPane Updated!')
 				}}"
@@ -201,30 +304,40 @@
 				<!-- Files explorer and editor -->
 				<left slot="left">
 					<HSplitPane
-						leftPaneSize="{shouldShowCanvas ? '20%' : '15%'}"
-						rightPaneSize="{shouldShowCanvas ? '80%' : '90%'}"
+						leftPaneSize="20%"
+						rightPaneSize="80%"
+						minLeftPaneSize="150px"
+						minRightPaneSize="300px"
 						updateCallback="{() => {
 							console.log('HSplitPane Updated!')
 						}}"
 					>
 						<left slot="left">
-							<Explorer />
+							{#if projectPath}
+								<Explorer {projectPath} />
+							{/if}
 						</left>
 						<right slot="right">
 							<VSplitPane
-								topPanelSize="97.4%"
-								downPanelSize="3.6%"
-								minTopPaneSize="50px"
-								minDownPaneSize="0px"
+								topPanelSize="75%"
+								downPanelSize="25%"
+								minTopPaneSize="200px"
+								minDownPaneSize="100px"
 							>
 								<top slot="top">
 									<Editor bind:lang="{lang}" bind:code="{currentCode}" onAction="{updateCanvas}" />
 								</top>
 								<down slot="down">
-									<!-- Terminal, console,  output -->
-									<div style="max-height=25%">
-										<OnlyTabs items="{consoleTabs}" add="{false}" />
-										<Terminal />
+									<!-- Terminal, console, output -->
+									<div class="console-container">
+										<OnlyTabs items="{consoleTabs}" add="{false}" on:message="{onConsoleTabUpdate}" />
+										{#if activeConsoleTab === 1}
+											<Terminal />
+										{:else if activeConsoleTab === 2}
+											<div class="console-panel">No problems found</div>
+										{:else}
+											<div class="console-panel">No output</div>
+										{/if}
 									</div>
 								</down>
 							</VSplitPane>
@@ -237,24 +350,28 @@
 						<HSplitPane
 							leftPaneSize="60%"
 							rightPaneSize="40%"
+							minLeftPaneSize="300px"
+							minRightPaneSize="200px"
 							updateCallback="{() => {
 								console.log('HSplitPane Updated!')
 							}}"
 						>
 							<left slot="left">
 								<!-- UI canvas -->
-								<UICanvas bind:items="{editorItems}" onAction="{handleCanvasChange}" />
+								<UICanvas bind:items={editorItems} on:action={handleCanvasAction} />
 							</left>
 							<right slot="right">
 								<!-- Widget, style, layout tabs for the active item -->
 								<OnlyTabs on:message="{onEditorTabUpdate}" items="{upControlTabs}" add="{false}" />
-								{#if activeEditorTab === 1}
-									<UIPallete />
-								{:else if activeEditorTab === 2}
-									<LayoutEditor />
-								{:else}
-									<StyleEditor />
-								{/if}
+								<div class="control-panel">
+									{#if activeEditorTab === 1}
+										<UIPallete />
+									{:else if activeEditorTab === 2}
+										<LayoutEditor />
+									{:else}
+										<StyleEditor />
+									{/if}
+								</div>
 							</right>
 						</HSplitPane>
 					{/if}
@@ -268,6 +385,7 @@
 	#contents_wrapper {
 		width: 100vw;
 		height: 95vh;
+		background-color: #1e1e1e;
 	}
 	.wrapper {
 		height: 100%;
@@ -318,5 +436,25 @@
 	.active {
 		background-color: black;
 		opacity: 100% !important;
+	}
+
+	.console-container {
+		height: 100%;
+		background-color: #1e1e1e;
+		color: #cccccc;
+	}
+
+	.console-panel {
+		padding: 1rem;
+		height: calc(100% - 30px);
+		overflow: auto;
+		font-family: monospace;
+		font-size: 12px;
+	}
+
+	.control-panel {
+		height: calc(100% - 30px);
+		overflow: auto;
+		background-color: #1e1e1e;
 	}
 </style>
