@@ -4,18 +4,16 @@
 )]
 
 mod window_management;
+mod terminal;
 
-use tauri::{Emitter, Manager, Runtime};
-use std::sync::Mutex;
+use tauri::{Emitter, Manager};
 use std::sync::atomic::{AtomicBool, Ordering};
 use serde_json;
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use std::collections::HashMap;
+use terminal::{TerminalState, async_create_shell, async_write_to_pty, async_read_from_pty, async_resize_pty};
 
 #[derive(Debug, Serialize)]
 struct FileNode {
@@ -68,22 +66,6 @@ async fn get_project_structure(path: String) -> Result<FileNode, String> {
     build_file_tree(Path::new(&path))
 }
 
-// Improved terminal session management
-pub struct TerminalSession {
-    child: CommandChild,
-}
-
-pub struct TerminalState {
-    sessions: Mutex<HashMap<u32, TerminalSession>>,
-}
-
-impl Default for TerminalState {
-    fn default() -> Self {
-        Self {
-            sessions: Mutex::new(HashMap::new()),
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RecentProject {
@@ -268,97 +250,6 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct TerminalOutput {
-    pid: u32,
-    data: String,
-}
-
-#[tauri::command]
-async fn create_terminal_session<R: Runtime>(app: tauri::AppHandle<R>) -> Result<u32, String> {
-    let shell = app.shell();
-    
-    // Use the shell plugin to spawn a new shell process
-    let shell_command = if cfg!(target_os = "windows") {
-        "cmd"
-    } else if Path::new("/bin/zsh").exists() {
-        "/bin/zsh"
-    } else {
-        "/bin/bash"
-    };
-    
-    let (mut rx, child) = shell
-        .command(shell_command)
-        .spawn()
-        .map_err(|e| format!("Failed to spawn shell: {}", e))?;
-    
-    let pid = child.pid();
-    
-    // Store the terminal session
-    let state: tauri::State<TerminalState> = app.state();
-    state.sessions.lock().unwrap().insert(pid, TerminalSession { child });
-    
-    // Handle terminal output
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(data) => {
-                    if let Ok(str_data) = String::from_utf8(data.clone()) {
-                        let _ = app_handle.emit("terminal-output", TerminalOutput {
-                            pid,
-                            data: str_data,
-                        });
-                    }
-                }
-                CommandEvent::Stderr(data) => {
-                    if let Ok(str_data) = String::from_utf8(data.clone()) {
-                        let _ = app_handle.emit("terminal-output", TerminalOutput {
-                            pid,
-                            data: str_data,
-                        });
-                    }
-                }
-                _ => {}
-            }
-        }
-    });
-    
-    Ok(pid)
-}
-
-#[tauri::command]
-async fn kill_terminal_session<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    pid: u32,
-) -> Result<(), String> {
-    let state: tauri::State<TerminalState> = app.state();
-    let mut sessions = state.sessions.lock().unwrap();
-    
-    if let Some(session) = sessions.remove(&pid) {
-        session.child.kill().map_err(|e| e.to_string())?;
-    }
-    
-    Ok(())
-}
-
-#[tauri::command]
-async fn write_to_terminal<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    pid: u32,
-    data: String,
-) -> Result<(), String> {
-    let state: tauri::State<TerminalState> = app.state();
-    let mut sessions = state.sessions.lock().unwrap();
-    
-    if let Some(session) = sessions.get_mut(&pid) {
-        session.child.write(data.as_bytes()).map_err(|e| e.to_string())?;
-    } else {
-        return Err("Terminal session not found".into());
-    }
-    
-    Ok(())
-}
 
 #[tauri::command]
 async fn read_file_content(path: String) -> Result<String, String> {
@@ -533,14 +424,13 @@ async fn paste_path(destination: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(TerminalState::default())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
-            create_terminal_session,
-            kill_terminal_session,
-            write_to_terminal,
+            async_create_shell,
+            async_write_to_pty,
+            async_read_from_pty,
+            async_resize_pty,
             read_file_content,
             write_file_content,
             watch_path,

@@ -1,91 +1,61 @@
-# Product Context
+# Product Context - Warp Code IDE
 
 ## Purpose
-WarpCode is an integrated development environment (IDE) focused on providing a seamless development experience with robust file management, efficient code editing, and reliable terminal integration.
+Warp Code IDE is a modern, visual application builder designed to streamline the development of web and native applications. It combines the power of visual development with clean code generation, providing developers with an efficient and intuitive way to create applications.
 
 ## Problems Solved
-- Streamlined project management with recent projects tracking
-- Efficient file system navigation and content management
-- Reliable code editing with proper file type detection
-- Integrated terminal capabilities with proper state management
-- Cross-platform compatibility with consistent behavior
+
+1. **Development Complexity**
+   - Simplifies application development through visual component building
+   - Reduces the learning curve for building modern applications
+   - Bridges the gap between design and implementation
+
+2. **Code Quality**
+   - Generates clean, maintainable Svelte code
+   - Ensures consistent code structure
+   - Maintains bi-directional sync between visual canvas and code
+
+3. **Development Efficiency**
+   - Provides drag-and-drop interface for rapid prototyping
+   - Offers real-time preview with hot reload
+   - Includes built-in project templates and component library
+
+4. **Cross-Platform Development**
+   - Built on Tauri 2.0 for native performance
+   - Supports web, desktop, and mobile platforms
+   - Unified development experience across platforms
 
 ## Core Features
 
-### Project Management
-- Efficient project creation and organization
-- Recent projects tracking with removal capability
-- Project templates and configuration
-- Single window per project with proper state
+1. **Visual Development**
+   - Interactive canvas for component layout
+   - Real-time preview with bi-directional sync
+   - Component property panel
+   - Glassmorphic UI design system
 
-### File System Integration
-- Comprehensive file explorer
-- Real-time file watching and updates
-- Smart file type detection
-- Important files prioritization
-- File content synchronization
+2. **Code Integration**
+   - Full code tree visualization
+   - Integrated code editor
+   - Direct code manipulation capabilities
+   - Project creation from templates
 
-### Code Editor
-- Monaco-based editor integration
-- Language-specific syntax highlighting
-- File type detection and proper handling
-- Content synchronization with external changes
-- Unsaved changes management
+3. **Development Tools**
+   - Integrated terminal
+   - File explorer
+   - Search functionality
+   - Project management
 
-### Terminal Integration
-- Native terminal capabilities
-- Command queuing and execution
-- Output buffering and display
-- Session management
-- Cross-platform shell support
-
-## User Experience Goals
-1. Seamless Project Management
-   - Easy project creation and opening
-   - Quick access to recent projects
-   - Proper window management
-   - Project state persistence
-
-2. Efficient File Handling
-   - Quick file navigation
-   - Real-time updates
-   - Smart file organization
-   - Type-specific handling
-
-3. Reliable Development Environment
-   - Stable editor integration
-   - Responsive terminal
-   - Cross-platform consistency
-   - Proper state management
+4. **Platform Support**
+   - Web applications
+   - Desktop applications (via Tauri)
+   - Mobile applications (planned)
 
 ## Target Users
-- Software Developers
-  * Need efficient code editing
-  * Require proper file management
-  * Use terminal frequently
-  * Work across platforms
+- Web developers
+- Application developers
+- UI/UX designers
+- Full-stack developers
+- Teams looking for rapid prototyping tools
 
-- Development Teams
-  * Share project configurations
-  * Need consistent environments
-  * Require reliable tools
-  * Value productivity features
-
-## Success Metrics
-1. Project Management
-   - Successful project creation rate
-   - Project loading time
-   - Recent projects usage
-   - Window management stability
-
-2. File System
-   - File operation success rate
-   - File type detection accuracy
-   - Update response time
-   - Content synchronization reliability
-
-3. Development Experience
-   - Editor performance
-   - Terminal reliability
-   - Cross-platform consistency
-   - Overall system stability
+## Value Proposition
+Warp Code IDE accelerates application development by providing a visual development environment that generates production-ready code, enabling developers to focus on business logic while maintaining full control over the codebase.

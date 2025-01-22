@@ -1,88 +1,215 @@
-# Technical Context
+# Technical Context - Warp Code IDE
 
-## Technologies Used
+## Technology Stack
 
 ### Frontend
-- Svelte 5 (with TypeScript)
-- Monaco Editor for code editing
-- Custom UI components
-- Svelte stores for state management
+- **Framework**: Svelte
+- **Router**: svelte-spa-router
+- **Build Tool**: Vite
+- **Language**: TypeScript
+- **Styling**: CSS with global styles
+- **Code Editor**: Monaco Editor
+- **Terminal**: xterm.js
 
-### Backend/Native
-- Tauri (Rust-based desktop framework)
-- Native file system integration
-- Terminal integration
-- Window management capabilities
+### Backend
+- **Framework**: Tauri 2.0
+- **Language**: Rust
+- **Core Plugins**:
+  - tauri-plugin-fs
+  - tauri-plugin-shell
+  - tauri-plugin-process
+  - tauri-plugin-dialog
 
 ### Development Tools
-- TypeScript for type safety
-- Vite for development and building
-- ESLint/Prettier for code formatting
-- NPM/Bun for package management
+- **Package Manager**: bun
+- **Version Control**: Git
+- **Code Formatting**: Prettier
+- **Linting**: ESLint
+- **Build System**: Rollup (for Electron components)
 
 ## Development Setup
-1. Core Dependencies
-   - Node.js/Bun runtime
-   - Rust toolchain for Tauri
-   - TypeScript compiler
-   - Monaco editor packages
-   - Svelte compiler and runtime
 
-2. Project Structure
-   - /src: Frontend Svelte application
-   - /src-tauri: Rust/Tauri backend
-   - /public: Static assets
-   - /src/components: Reusable UI components
-   - /src/stores: State management
-   - /src/modules: Core functionality modules
+### Prerequisites
+1. **System Requirements**
+   - Node.js (Latest LTS)
+   - Rust (Latest stable)
+   - Bun package manager
+   - Git
+
+2. **Platform-specific Requirements**
+   - **Windows**: 
+     - Visual Studio Build Tools
+     - WebView2
+   - **macOS**: 
+     - Xcode Command Line Tools
+   - **Linux**: 
+     - webkit2gtk
+     - libappindicator
+     - build-essential
+
+### Installation Steps
+```bash
+# Install dependencies
+bun install
+
+# Development
+bun run dev:all
+
+# If node-pty fails
+bun rebuild
+$(bun bin)/electron-rebuild  # Unix
+.\node_modules\.bin\electron-rebuild.cmd  # Windows
+```
+
+### Development Commands
+```bash
+# Start development server
+bun run dev
+
+# Build project
+bun run build
+
+# Run tests
+bun test
+
+# Format code
+bun run format
+
+# Lint code
+bun run lint
+```
+
+## Project Structure
+```
+project-warpcode/
+├── src/                    # Frontend source code
+│   ├── components/         # Reusable UI components
+│   ├── views/             # Page components
+│   ├── stores/            # State management
+│   ├── styles/            # Global styles
+│   ├── modules/           # Business logic
+│   └── types/             # TypeScript types
+│
+├── src-tauri/             # Backend source code
+│   ├── src/               # Rust source files
+│   ├── templates/         # Project templates
+│   └── capabilities/      # Security capabilities
+│
+├── public/                # Static assets
+│   └── static/
+│       └── assets/        # Icons and images
+│
+└── script/               # Build scripts
+```
+
+## Configuration Files
+
+### Frontend
+- **vite.config.js**: Vite configuration
+- **svelte.config.js**: Svelte configuration
+- **tsconfig.json**: TypeScript configuration
+- **.eslintrc.cjs**: ESLint rules
+- **.prettierrc**: Prettier formatting rules
+
+### Backend
+- **Cargo.toml**: Rust dependencies
+- **tauri.conf.json**: Tauri configuration
+- **capabilities/**: Tauri capability definitions
 
 ## Technical Constraints
 
-1. Editor Integration
-   - Monaco editor must be lazy-loaded
-   - Editor state must be properly cleaned up
-   - Store updates must be centralized in Editor component
-   - File content synchronization must handle:
-     * Focus states
-     * External changes
-     * Unsaved modifications
-     * Large files
-   - Memory management for long sessions
+### Security
+1. **File System Access**
+   - Restricted to project directories
+   - Capability-based permissions
+   - Secure file operations
 
-2. File System Integration
-   - All operations must be asynchronous
-   - File watching must be efficient:
-     * Debounced updates
-     * Memory-efficient watchers
-     * Proper cleanup
-   - Path handling must be cross-platform
-   - Important files must be preserved
-   - File type detection must be comprehensive
+2. **Shell Access**
+   - Limited command execution
+   - Sandboxed environment
+   - Plugin-based restrictions
 
-3. Window Management
-   - Single instance per project
-   - Proper window cleanup
-   - State persistence between sessions
-   - Cross-platform window handling
-   - Proper window transitions
+3. **IPC Communication**
+   - Secure message passing
+   - Validated data transfer
+   - Protected channels
 
-4. Terminal Integration
-   - Bidirectional communication must be reliable
-   - Command queuing must prevent race conditions
-   - Output handling must be efficient
-   - Session cleanup must be thorough
-   - Cross-platform shell support
+### Performance
+1. **Memory Usage**
+   - Efficient state management
+   - Optimized file operations
+   - Memory-conscious data structures
 
-5. Performance Considerations
-   - Efficient file system watching
-   - Optimized store updates
-   - Memory management in long sessions
-   - Large file handling
-   - Terminal output buffering
+2. **Startup Time**
+   - Lazy loading of components
+   - Optimized bundle size
+   - Fast initial render
 
-6. Cross-Platform Support
-   - Windows/macOS/Linux compatibility
-   - Path handling differences
-   - Shell differences
-   - File system differences
-   - Window management differences
+3. **Runtime Performance**
+   - Asynchronous operations
+   - Efficient UI updates
+   - Optimized file watching
+
+### Cross-Platform
+1. **Desktop Support**
+   - Windows
+   - macOS
+   - Linux
+
+2. **Mobile Support** (Planned)
+   - iOS
+   - Android
+
+3. **Web Support**
+   - Modern browsers
+   - Progressive enhancement
+
+## Development Guidelines
+
+### Code Style
+1. **TypeScript**
+   - Strict type checking
+   - Interface-first design
+   - Documented types
+
+2. **Svelte**
+   - Component composition
+   - Reactive declarations
+   - Props validation
+
+3. **Rust**
+   - Safe code practices
+   - Error handling
+   - Documentation
+
+### Testing Requirements
+1. **Unit Tests**
+   - Component tests
+   - Store tests
+   - Utility tests
+
+2. **Integration Tests**
+   - Cross-component tests
+   - API tests
+   - File system tests
+
+3. **E2E Tests**
+   - User flow tests
+   - Cross-platform tests
+   - Performance tests
+
+### Documentation
+1. **Code Documentation**
+   - JSDoc comments
+   - Rust documentation
+   - Type definitions
+
+2. **API Documentation**
+   - IPC commands
+   - Plugin APIs
+   - Public interfaces
+
+3. **User Documentation**
+   - Setup guides
+   - Usage documentation
+   - API references

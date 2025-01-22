@@ -7,6 +7,21 @@
 	import { confirm } from '@tauri-apps/plugin-dialog'
 	import { listen } from '@tauri-apps/api/event'
 	import activeFile, { type ActiveFile } from '../stores/activeFile'
+	import OnlyTabs from './tabs/OnlyTabs.svelte'
+	import {
+		FileJson,
+		FileCode,
+		FileText,
+		FileType,
+		File as FileIcon,
+		Settings,
+		GitBranch,
+		Terminal,
+		FileImage,
+		FileSpreadsheet,
+		FileVideo,
+		FileAudio
+	} from 'lucide-svelte'
 
 	export let activeTabValue = 0
 	export let lang = 'html'
@@ -33,52 +48,34 @@
 		modified: boolean;
 	}
 
-	function getFileIcon(fileName: string, ext: string): string {
+	function getFileIcon(fileName: string, ext: string) {
 		// Check specific files first
-		if (fileName === 'package.json' || fileName === 'tsconfig.json') return '/static/assets/json.svg'
-		if (fileName === '.gitignore') return '/static/assets/git.svg'
-		if (fileName.toLowerCase() === 'dockerfile') return '/static/assets/docker.svg'
-		if (fileName.toLowerCase() === 'makefile') return '/static/assets/make.svg'
+		if (fileName === 'package.json' || fileName === 'tsconfig.json') return FileJson
+		if (fileName === '.gitignore' || fileName.startsWith('.git')) return GitBranch
+		if (fileName === 'dockerfile') return FileCode
+		if (fileName === 'makefile') return Terminal
+		if (fileName.includes('config') || fileName.endsWith('rc')) return Settings
 
 		// Then check extensions
-		const iconMap: Record<string, string> = {
-			'ts': 'ts',
-			'tsx': 'ts',
-			'js': 'js',
-			'jsx': 'js',
-			'mjs': 'js',
-			'svelte': 'svelte',
-			'vue': 'vue',
-			'css': 'css',
-			'scss': 'css',
-			'sass': 'css',
-			'less': 'css',
-			'json': 'json',
-			'jsonc': 'json',
-			'html': 'html',
-			'htm': 'html',
-			'md': 'markdown',
-			'markdown': 'markdown',
-			'yml': 'yaml',
-			'yaml': 'yaml',
-			'rs': 'rust',
-			'py': 'python',
-			'go': 'go',
-			'java': 'java',
-			'php': 'php',
-			'rb': 'ruby',
-			'sh': 'shell',
-			'bash': 'shell',
-			'sql': 'sql',
-			'xml': 'xml',
-			'toml': 'toml',
-			'cpp': 'cpp',
-			'cc': 'cpp',
-			'h': 'cpp',
-			'hpp': 'cpp',
-			'c': 'c'
-		}
-		return `/static/assets/${iconMap[ext] || 'file'}.svg`
+		const codeExts = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'svelte', 'vue', 'php', 'py', 'rb', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp']
+		const configExts = ['json', 'yaml', 'yml', 'toml', 'ini']
+		const docExts = ['md', 'txt', 'doc', 'docx', 'pdf', 'rtf']
+		const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp']
+		const styleExts = ['css', 'scss', 'sass', 'less', 'styl']
+		const dataExts = ['csv', 'xls', 'xlsx', 'xml']
+		const videoExts = ['mp4', 'webm', 'mov', 'avi']
+		const audioExts = ['mp3', 'wav', 'ogg', 'flac']
+
+		if (codeExts.includes(ext)) return FileCode
+		if (configExts.includes(ext)) return FileJson
+		if (docExts.includes(ext)) return FileText
+		if (imageExts.includes(ext)) return FileImage
+		if (styleExts.includes(ext)) return FileType
+		if (dataExts.includes(ext)) return FileSpreadsheet
+		if (videoExts.includes(ext)) return FileVideo
+		if (audioExts.includes(ext)) return FileAudio
+
+		return FileIcon
 	}
 
 	let fileWatcherUnlisten: (() => void) | null = null
@@ -91,12 +88,10 @@
 				
 				if (activeTab && paths.includes(activeTab.filePath)) {
 					try {
-						// Refresh file content
 						const content = await invoke<string>('read_file_content', { 
 							path: activeTab.filePath 
 						})
 						
-						// Only update if content has changed and file isn't modified locally
 						if (!activeTab.modified && content !== activeTab.editorValue) {
 							code = content
 							activeTab.editorValue = content
@@ -140,7 +135,6 @@
 				modified: false
 			}
 
-			// Check for duplicates
 			const existingTab = $openTabs.find(tab => tab.filePath === newTab.filePath)
 			if (existingTab) {
 				activeTabValue = existingTab.tabId
@@ -148,13 +142,11 @@
 				return
 			}
 
-			// Add new tab
 			$openTabs = [...$openTabs, newTab]
 			count = count + 1
 			activeTabValue = newTab.tabId
 			activeEditor = newTab.tabId
 			
-			// Start watching this file
 			await invoke('watch_path', { path: file.path })
 		} catch (error) {
 			console.error('Failed to add tab:', error)
@@ -221,7 +213,6 @@
 
 		if (active) {
 			try {
-				// Refresh file content when switching tabs
 				const content = await invoke<string>('read_file_content', { 
 					path: active.filePath 
 				})
@@ -285,7 +276,18 @@
 		}
 	}
 
-	// Listen for file selection events from the explorer
+	function handleTabClose(event: CustomEvent) {
+		deleteTab(event.detail.value)
+	}
+
+	$: tabItems = $openTabs.map(tab => ({
+		label: tab.fileName,
+		value: tab.tabId,
+		path: tab.filePath,
+		modified: tab.modified,
+		icon: getFileIcon(tab.fileName, tab.ext)
+	}))
+
 	window.addEventListener('editorFileSelected', ((event: CustomEvent<ActiveFile>) => {
 		const fileInfo = event.detail
 		if (!fileInfo || !fileInfo.content || !fileInfo.language) {
@@ -298,7 +300,6 @@
 		title = `${fileInfo.name} - ${title}`
 	}) as EventListener)
 
-	// Listen for save keyboard shortcut
 	window.addEventListener('keydown', async (e) => {
 		if ((e.metaKey || e.ctrlKey) && e.key === 's') {
 			e.preventDefault()
@@ -310,154 +311,80 @@
 	})
 </script>
 
-<div class="tabs-container">
-	<ul>
-		{#each $openTabs as tab}
-			<li
-				class:active={activeTabValue === tab.tabId}
-			>
-				<span class="tab-span" on:click={handleClick(tab.tabId)}>
-					<img src={getFileIcon(tab.fileName, tab.ext)} alt={tab.ext} />
-					<span class="tab-name">
-						{tab.fileName}
-						{#if tab.modified}
-							<span class="modified-indicator" title="File has unsaved changes">●</span>
-						{/if}
-					</span>
-					<button 
-						class="delete-button" 
-						on:click|stopPropagation={() => deleteTab(tab.tabId)}
-						title="Close"
-					>
-						×
-					</button>
-				</span>
-			</li>
-		{/each}
-	</ul>
+<div class="editor-container">
+	{#if $openTabs.length > 0}
+		<div class="editor-tabs">
+			<OnlyTabs 
+				items={tabItems} 
+				bind:activeTabValue 
+				on:close={handleTabClose}
+			/>
+		</div>
+		<div class="editor-body">
+			<Monaco 
+				bind:code 
+				bind:lang 
+				on:save={handleSave}
+				on:change={handleCodeChange}
+			/>
+		</div>
+	{:else}
+		<div class="empty-state">
+			<div class="empty-content">
+				<h2>Welcome to WarpCode</h2>
+				<p>Open a file from the explorer to start editing</p>
+			</div>
+		</div>
+	{/if}
 </div>
 
-{#if $openTabs.length > 0}
-	<div class="editor-body">
-		<Monaco 
-			bind:code 
-			bind:lang 
-			on:save={handleSave}
-			on:change={handleCodeChange}
-		/>
-	</div>
-{:else}
-	<div class="empty-state">
-		<p>No files open</p>
-	</div>
-{/if}
-
 <style>
-	.tabs-container {
-		background-color: rgb(27, 27, 26);
-		border-bottom: 1px solid #dee2e6;
+	.editor-container {
+		height: 100%;
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		background-color: var(--warp-bg-main);
+	}
+
+	.editor-tabs {
+		flex-shrink: 0;
 	}
 
 	.editor-body {
-		width: 100%;
-		height: 98%;
+		flex: 1;
 		overflow: hidden;
-		padding: 0;
+		border-top: 1px solid var(--warp-border);
 	}
 
 	.empty-state {
-		display: flex;
-		justify-content: center;
-		align-items: center;
 		height: 100%;
-		color: #666;
-		font-style: italic;
-	}
-
-	ul {
-		font-size: 10px;
-		display: flex;
-		flex-direction: row;
-		overflow: auto;
-		white-space: nowrap;
-		scrollbar-width: thin;
-		padding-left: 0;
-		margin: 0;
-		list-style: none;
-		border-bottom: 1px solid #dee2e6;
-		background-color: rgb(27, 27, 26);
-	}
-
-	li {
-		margin-bottom: -1px;
-		background-color: rgb(37, 37, 37);
-		color: #fff;
-	}
-
-	.tab-span {
-		border: 1px solid transparent;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		padding: 0.3rem 0.8rem;
-		cursor: pointer;
-		font-size: 12px;
-		gap: 0.5rem;
-	}
-
-	.tab-name {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-	}
-
-	.modified-indicator {
-		color: #ffd700;
-		font-size: 0.8em;
-		margin-left: 0.3rem;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 0.8em;
-		height: 0.8em;
-	}
-
-	.tab-span:hover {
-		background-color: rgba(255, 255, 255, 0.1);
-	}
-
-	li.active > .tab-span {
-		color: #ffffff;
-		background-color: rgb(53, 50, 50);
-		border-color: #dee2e6 #dee2e6 #fff;
-	}
-
-	img {
-		height: 1em;
-		width: 1em;
-		object-fit: contain;
-	}
-
-	.delete-button {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		margin-left: 4px;
+		color: var(--warp-text-secondary);
+		background-color: var(--warp-bg-main);
+		user-select: none;
+		padding: var(--warp-space-xl);
+	}
+
+	.empty-content {
+		text-align: center;
+		max-width: 400px;
+	}
+
+	.empty-content h2 {
+		font-size: 24px;
+		font-weight: 300;
+		margin: 0 0 var(--warp-space-md);
+		color: var(--warp-text-primary);
+		letter-spacing: -0.5px;
+	}
+
+	.empty-content p {
 		font-size: 14px;
-		opacity: 0.7;
-		transition: opacity 0.2s;
-		background: none;
-		border: none;
-		color: inherit;
-		padding: 0;
-		cursor: pointer;
-	}
-
-	.delete-button:hover {
-		opacity: 1;
-		background-color: rgba(255, 255, 255, 0.1);
+		margin: 0;
+		line-height: 1.6;
+		color: var(--warp-text-secondary);
 	}
 </style>

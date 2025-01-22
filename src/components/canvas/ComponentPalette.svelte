@@ -1,12 +1,20 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { WidgetType } from './types';
+  import {
+    Box,
+    Type,
+    Square as ButtonIcon,
+    Image as ImageIcon,
+    ScrollText,
+    Play
+  } from 'lucide-svelte';
 
   const dispatch = createEventDispatcher();
 
   interface ComponentTemplate {
     type: WidgetType;
-    icon: string;
+    icon: any; // Lucide icon component type
     label: string;
     defaultValue?: string;
     defaultStyles?: Record<string, string>;
@@ -15,7 +23,7 @@
   const components: ComponentTemplate[] = [
     {
       type: 'container',
-      icon: '⬚',
+      icon: Box,
       label: 'Container',
       defaultStyles: {
         width: '200px',
@@ -30,7 +38,7 @@
     },
     {
       type: 'label',
-      icon: 'T',
+      icon: Type,
       label: 'Text',
       defaultValue: 'Text Label',
       defaultStyles: {
@@ -41,7 +49,7 @@
     },
     {
       type: 'button',
-      icon: '⬭',
+      icon: ButtonIcon,
       label: 'Button',
       defaultValue: 'Button',
       defaultStyles: {
@@ -58,7 +66,7 @@
     },
     {
       type: 'image',
-      icon: '🖼',
+      icon: ImageIcon,
       label: 'Image',
       defaultStyles: {
         width: '200px',
@@ -69,7 +77,7 @@
     },
     {
       type: 'scrollContainer',
-      icon: '⬍',
+      icon: ScrollText,
       label: 'Scroll Area',
       defaultStyles: {
         width: '200px',
@@ -82,7 +90,7 @@
     },
     {
       type: 'videoPlayer',
-      icon: '▶',
+      icon: Play,
       label: 'Video',
       defaultStyles: {
         width: '320px',
@@ -105,7 +113,7 @@
     // Create a ghost image
     const ghost = document.createElement('div');
     ghost.className = 'component-ghost';
-    ghost.textContent = component.icon;
+    ghost.innerHTML = `<div style="width: 24px; height: 24px; color: var(--warp-accent);"></div>`;
     document.body.appendChild(ghost);
     event.dataTransfer.setDragImage(ghost, 25, 25);
     setTimeout(() => document.body.removeChild(ghost), 0);
@@ -125,10 +133,20 @@
       <div 
         class="component-item glass"
         draggable="true"
+        role="button"
+        tabindex="0"
+        aria-label={`Drag ${component.label} component`}
         on:dragstart={(e) => handleDragStart(component, e)}
         on:dragend={handleDragEnd}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            handleDragStart(component, new DragEvent('dragstart'));
+          }
+        }}
       >
-        <span class="component-icon">{component.icon}</span>
+        <span class="component-icon">
+          <svelte:component this={component.icon} size={24} />
+        </span>
         <span class="component-label">{component.label}</span>
       </div>
     {/each}
@@ -140,26 +158,29 @@
     width: 250px;
     height: 100%;
     overflow-y: auto;
-    padding: 1rem;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    padding: var(--warp-space-md);
+    border-right: 1px solid var(--warp-border);
+    background-color: var(--warp-bg-panel);
   }
 
   .palette-header {
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: var(--warp-space-md);
+    padding-bottom: var(--warp-space-sm);
+    border-bottom: 1px solid var(--warp-border);
   }
 
   .palette-header h3 {
     margin: 0;
-    font-size: 1.1rem;
-    color: #ffffff;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--warp-text-primary);
+    letter-spacing: 0.5px;
   }
 
   .components-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
+    gap: var(--warp-space-md);
   }
 
   .component-item {
@@ -167,30 +188,43 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
-    border-radius: 8px;
+    padding: var(--warp-space-md);
+    border-radius: 6px;
     cursor: grab;
     transition: all 0.2s ease;
+    background-color: var(--warp-bg-main);
+    border: 1px solid var(--warp-border);
   }
 
   .component-item:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background-color: var(--warp-hover);
     transform: translateY(-2px);
+    border-color: var(--warp-accent);
   }
 
   .component-item:active {
     cursor: grabbing;
+    transform: translateY(0);
   }
 
   .component-icon {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-    color: #64b5f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--warp-space-sm);
+    color: var(--warp-accent);
+    width: 24px;
+    height: 24px;
   }
 
   .component-label {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    color: var(--warp-text-secondary);
+    transition: color 0.2s ease;
+  }
+
+  .component-item:hover .component-label {
+    color: var(--warp-text-primary);
   }
 
   :global(.component-ghost) {
@@ -199,14 +233,13 @@
     left: -1000px;
     width: 50px;
     height: 50px;
-    background: rgba(100, 181, 246, 0.2);
-    border: 1px solid #64b5f6;
-    border-radius: 8px;
+    background-color: var(--warp-accent-transparent);
+    border: 1px solid var(--warp-accent);
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    color: #64b5f6;
+    color: var(--warp-accent);
     pointer-events: none;
   }
 
@@ -216,15 +249,16 @@
   }
 
   .component-palette::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
+    background: transparent;
   }
 
   .component-palette::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background-color: var(--warp-border);
     border-radius: 4px;
+    border: 2px solid var(--warp-bg-panel);
   }
 
   .component-palette::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background-color: var(--warp-border-light);
   }
 </style>

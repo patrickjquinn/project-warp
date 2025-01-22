@@ -1,80 +1,158 @@
-# System Patterns
+# System Patterns - Warp Code IDE
 
 ## Architecture Overview
-- Desktop application built with Tauri (Rust) and Svelte (TypeScript)
-- Component-based architecture with clear separation of concerns
-- Store-based state management using Svelte stores
-- File system integration through Tauri's native capabilities
 
-## Key Technical Decisions
-1. Editor Integration
-   - Monaco Editor for code editing capabilities
-   - Custom wrapper component for Svelte integration
-   - Two-way binding pattern for content synchronization
-   - Focus-aware updates to prevent editing conflicts
+### Frontend Architecture
+1. **Framework & UI**
+   - Built with Svelte for reactive UI components
+   - Uses svelte-spa-router for navigation
+   - Implements a component-based architecture
+   - Follows a store-based state management pattern
 
-2. UI Component System
-   - Canvas-based UI builder
-   - Component palette for drag-and-drop functionality
-   - Property panel for component configuration
-   - Nested content support for complex layouts
+2. **Key Components**
+   - AppBuilder: Main IDE interface
+   - Launcher: Project selection/creation interface
+   - Explorer: File system navigation
+   - Terminal: Integrated command-line interface
+   - Canvas: Visual component editor
+   - PropertyPanel: Component property editor
 
-3. File System Handling
-   - Explorer component for file system navigation
-   - Directory store for file system state management
+3. **State Management**
+   - Uses Svelte stores for reactive state
+   - Separate stores for different concerns:
+     - searchStore: Search functionality
+     - panelStore: Panel visibility/state
+     - settingsStore: Application settings
+     - canvasStore: Visual editor state
+     - layoutStore: UI layout management
+
+### Backend Architecture
+1. **Core Framework**
+   - Built on Tauri 2.0
+   - Rust-based backend for performance
+   - Plugin-based architecture for extensibility
+
+2. **File System Operations**
+   - Secure file system access via tauri-plugin-fs
    - File watching capabilities
-   - Active file tracking
+   - Project structure management
+   - File operation commands (create, rename, delete)
 
-4. Terminal Integration
-   - Native terminal capabilities through Tauri
-   - Custom terminal component for UI integration
-   - Command execution support
+3. **Terminal Integration**
+   - Integrated shell support via tauri-plugin-shell
+   - Cross-platform terminal emulation
+   - Process management and I/O handling
+
+4. **Project Management**
+   - Template-based project creation
+   - Recent projects tracking
+   - Project configuration management
+
+## Technical Decisions
+
+### 1. Framework Selection
+- **Tauri 2.0**
+  - Chosen for native performance
+  - Better security model than Electron
+  - Smaller bundle size
+  - Built-in mobile support
+
+- **Svelte**
+  - Minimal runtime overhead
+  - Reactive by default
+  - Excellent component composition
+  - Clean, maintainable code
+
+### 2. Security Patterns
+- Capability-based security model
+- Scoped file system access
+- Secure IPC communication
+- Plugin-based permission system
+
+### 3. State Management
+- Decentralized store pattern
+- Component-local state when possible
+- Global stores for shared state
+- Event-based communication
+
+### 4. Code Organization
+```
+src/
+├── components/     # Reusable UI components
+├── views/         # Page-level components
+├── stores/        # State management
+├── styles/        # Global styles
+└── modules/       # Business logic modules
+
+src-tauri/
+├── src/           # Rust backend code
+└── templates/     # Project templates
+```
+
+### 5. Plugin Architecture
+- Core plugins:
+  - fs: File system operations
+  - shell: Terminal and process management
+  - process: Application lifecycle
+  - dialog: Native dialogs
 
 ## Design Patterns
 
-1. Store Pattern
-   - Centralized state management through Svelte stores
-   - Clear ownership of store updates:
-     * Editor component manages file state
-     * Explorer component handles file selection events
-     * Terminal component manages session state
-   - Unidirectional data flow
-   - Event-driven updates
+1. **Component Patterns**
+   - Smart/Dumb component separation
+   - Higher-order components for reusability
+   - Slot-based composition
+   - Event delegation
 
-2. Component Composition
-   - Clear separation of concerns:
-     * Explorer: File system navigation and selection
-     * Editor: File content and state management
-     * Terminal: Command execution and output
-   - Event-based communication between components
-   - Hierarchical component structure
-   - Reusable UI components
+2. **Store Patterns**
+   - Single source of truth
+   - Immutable state updates
+   - Derived stores for computed values
+   - Action creators for complex operations
 
-3. Native Integration
-   - Tauri commands for native functionality:
-     * File system operations with proper error handling
-     * Window management with state persistence
-     * Process management for terminal sessions
-     * Event system for file watching
-   - Cross-platform compatibility
-   - Asynchronous operation handling
+3. **Communication Patterns**
+   - Event-based communication
+   - Message passing via IPC
+   - Reactive data flow
+   - Command pattern for operations
 
-4. File System Handling
-   - Real-time file watching
-   - Debounced updates
-   - File type detection
-   - Sorting and filtering
-   - Important file handling
+4. **UI Patterns**
+   - Responsive design
+   - Glassmorphic styling
+   - Drag and drop interfaces
+   - Context menus
+   - Split panels
 
-5. Window Management
-   - Single instance per project
-   - Window state persistence
-   - Proper window transitions
-   - Cross-platform window handling
+## Performance Considerations
 
-6. Terminal Integration
-   - Bidirectional communication
-   - Command queuing
-   - Output buffering
-   - Session management
-   - Proper cleanup
+1. **Frontend**
+   - Lazy loading of components
+   - Virtual scrolling for large lists
+   - Debounced operations
+   - Efficient state updates
+
+2. **Backend**
+   - Asynchronous file operations
+   - Buffered terminal I/O
+   - Efficient process management
+   - Memory-conscious data structures
+
+## Testing Strategy
+
+1. **Unit Testing**
+   - Component testing
+   - Store testing
+   - Utility function testing
+   - Backend service testing
+
+2. **Integration Testing**
+   - Cross-component interaction
+   - Store integration
+   - IPC communication
+   - File system operations
+
+3. **End-to-End Testing**
+   - User flow testing
+   - Cross-platform verification
+   - Performance testing
+   - Security testing

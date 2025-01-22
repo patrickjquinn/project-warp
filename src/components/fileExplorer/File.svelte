@@ -4,6 +4,20 @@
 	import type { FileNode, FileSelectedEvent } from './types'
 	import ContextMenu from './ContextMenu.svelte'
 	import activeFile, { type ActiveFile } from '../../stores/activeFile'
+	import {
+		File as FileIcon,
+		FileJson,
+		FileText,
+		FileCode,
+		FileType,
+		FileImage,
+		FileSpreadsheet,
+		FileVideo,
+		FileAudio,
+		Terminal,
+		Cog,
+		GitBranch
+	} from 'lucide-svelte'
 
 	type MenuAction = 'newFile' | 'newFolder' | 'rename' | 'delete' | 'copy' | 'paste' | 'cut';
 
@@ -26,6 +40,12 @@
 	let isEditing = false
 	let editValue = name
 	let inputElement: HTMLInputElement
+	let isSelected = false
+
+	// Subscribe to activeFile store to track selection state
+	activeFile.subscribe(file => {
+		isSelected = file?.path === path;
+	});
 
 	function getLanguageFromPath(fileName: string, ext: string): string {
 		// Check specific files first
@@ -182,17 +202,14 @@
 
 	async function fileClicked() {
 		try {
-			// Read file content first
 			const content = await invoke<string>('read_file_content', { path })
 			if (content === undefined || content === null) {
 				throw new Error('Failed to read file content')
 			}
 
-			// Get language based on file extension
 			const ext = name.split('.').pop()?.toLowerCase() || ''
 			const fileLanguage = getLanguageFromPath(name, ext)
 			
-			// Create active file info
 			const fileInfo: FileSelectedEvent = {
 				name,
 				type: 'file' as const,
@@ -201,7 +218,6 @@
 				language: fileLanguage
 			}
 
-			// Log file info for debugging
 			console.log('File clicked:', {
 				name,
 				path,
@@ -209,16 +225,13 @@
 				language: fileLanguage
 			});
 
-			// Create active file info with additional properties
 			const activeFileInfo: ActiveFile = {
 				...fileInfo,
 				modified: false
 			}
 			
-			// Update the store first
 			activeFile.set(activeFileInfo)
 
-			// Then dispatch the event for the editor
 			const editorEvent = new CustomEvent('editorFileSelected', {
 				detail: fileInfo,
 				bubbles: true,
@@ -227,7 +240,6 @@
 			console.log('Dispatching editorFileSelected event:', fileInfo);
 			window.dispatchEvent(editorEvent)
 
-			// Also dispatch for any parent components that need to know
 			console.log('Dispatching fileSelected event:', fileInfo);
 			dispatch('fileSelected', fileInfo)
 		} catch (error) {
@@ -237,45 +249,44 @@
 	}
 
 	$: {
-		extension = name.slice(name.lastIndexOf('.') + 1)
+		extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
 		language = getLanguageFromPath(name, extension)
+	}
 
-		// Set icon based on file type
-		const iconMap: Record<string, string> = {
-			'svelte': 'svelte',
-			'js': 'js',
-			'jsx': 'js',
-			'ts': 'ts',
-			'tsx': 'ts',
-			'json': 'json',
-			'xml': 'xml',
-			'jpg': 'jpg',
-			'jpeg': 'jpg',
-			'svg': 'svg',
-			'png': 'png',
-			'html': 'html',
-			'css': 'css',
-			'md': 'markdown',
-			'rs': 'rust',
-			'py': 'python',
-			'go': 'go',
-			'java': 'java',
-			'php': 'php',
-			'rb': 'ruby',
-			'sh': 'shell',
-			'bash': 'shell',
-			'sql': 'sql',
-			'yml': 'yaml',
-			'yaml': 'yaml',
-			'toml': 'toml'
-		}
+	function getFileIcon(fileName: string, ext: string) {
+		// Check specific files first
+		if (fileName === 'package.json' || fileName === 'tsconfig.json') return FileJson
+		if (fileName === '.gitignore' || fileName.startsWith('.git')) return GitBranch
+		if (fileName === 'dockerfile') return FileCode
+		if (fileName === 'makefile') return Terminal
+		if (fileName.includes('config') || fileName.endsWith('rc')) return Cog
 
-		icon = `/static/assets/${iconMap[extension] || 'file'}.svg`
+		// Then check extensions
+		const codeExts = ['js', 'jsx', 'ts', 'tsx', 'svelte', 'vue', 'php', 'py', 'rb', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp']
+		const configExts = ['json', 'yaml', 'yml', 'toml', 'ini']
+		const docExts = ['md', 'txt', 'doc', 'docx', 'pdf', 'rtf']
+		const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp']
+		const styleExts = ['css', 'scss', 'sass', 'less', 'styl']
+		const dataExts = ['csv', 'xls', 'xlsx', 'xml']
+		const videoExts = ['mp4', 'webm', 'mov', 'avi']
+		const audioExts = ['mp3', 'wav', 'ogg', 'flac']
+
+		if (codeExts.includes(ext)) return FileCode
+		if (configExts.includes(ext)) return FileJson
+		if (docExts.includes(ext)) return FileText
+		if (imageExts.includes(ext)) return FileImage
+		if (styleExts.includes(ext)) return FileType
+		if (dataExts.includes(ext)) return FileSpreadsheet
+		if (videoExts.includes(ext)) return FileVideo
+		if (audioExts.includes(ext)) return FileAudio
+
+		return FileIcon
 	}
 </script>
 
 <div 
 	class="file-item"
+	class:selected={isSelected}
 	role="button"
 	tabindex="0"
 	on:click={fileClicked}
@@ -293,18 +304,22 @@
 	on:contextmenu={handleContextMenu}
 	aria-label={`File: ${name}`}
 >
-	<img src={icon} alt={`${extension} file`} class="file-icon" />
-	{#if isEditing}
-		<input
-			bind:this={inputElement}
-			bind:value={editValue}
-			class="file-name-input"
-			on:blur={handleRename}
-			on:keydown={handleKeyDown}
-		/>
-	{:else}
-		<span class="file-name">{name}</span>
-	{/if}
+	<div class="file-content">
+		<div class="icon-wrapper">
+			<svelte:component this={getFileIcon(name, extension)} size={16} />
+		</div>
+		{#if isEditing}
+			<input
+				bind:this={inputElement}
+				bind:value={editValue}
+				class="file-name-input"
+				on:blur={handleRename}
+				on:keydown={handleKeyDown}
+			/>
+		{:else}
+			<span class="file-name">{name}</span>
+		{/if}
+	</div>
 </div>
 
 <ContextMenu
@@ -322,60 +337,89 @@
 />
 
 <style>
-	.file-name-input {
-		flex: 1;
-		background: #3c3c3c;
-		border: 1px solid #007fd4;
-		color: #cccccc;
-		font-size: 0.9rem;
-		padding: 0 0.3rem;
-		margin-right: 0.5rem;
-		outline: none;
-		height: 1.2rem;
-	}
-
 	.file-item {
-		padding: 0.2rem 0;
+		position: relative;
+		height: 22px;
+		color: var(--warp-text-primary);
+		cursor: pointer;
+		user-select: none;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		color: #cccccc;
-		cursor: pointer;
-		border-radius: 3px;
-		padding-left: 1.5rem;
-		position: relative;
-		user-select: none;
+		transition: background-color 0.1s ease;
 	}
 
 	.file-item:hover {
-		background-color: rgba(255, 255, 255, 0.1);
+		background-color: var(--warp-hover);
 	}
 
-	.file-icon {
-		width: 1rem;
-		height: 1rem;
-		object-fit: contain;
-		opacity: 0.8;
+	.file-item:focus {
+		outline: 1px solid var(--warp-accent);
+		outline-offset: -1px;
+	}
+
+	.file-item.selected {
+		background-color: var(--warp-accent-transparent);
+	}
+
+	.file-item.selected:focus {
+		background-color: var(--warp-accent-transparent);
+	}
+
+	.file-content {
+		display: flex;
+		align-items: center;
+		padding-left: var(--warp-explorer-indent);
+		width: 100%;
+		height: 100%;
+	}
+
+	.icon-wrapper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		margin-right: var(--warp-space-sm);
+		color: var(--warp-text-secondary);
+		flex-shrink: 0;
+	}
+
+	.icon-wrapper :global(svg) {
+		transition: color 0.2s ease;
+	}
+
+	.file-item:hover .icon-wrapper :global(svg) {
+		color: var(--warp-text-primary);
 	}
 
 	.file-name {
-		font-size: 0.9rem;
+		font-size: 13px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		color: var(--warp-text-primary);
+		transition: color 0.2s ease;
 	}
 
-	/* Add glassmorphic effect on hover */
-	.file-item:hover {
-		background: rgba(255, 255, 255, 0.1);
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+	.file-name-input {
+		flex: 1;
+		background-color: var(--warp-bg-panel);
+		border: 1px solid var(--warp-border);
+		color: var(--warp-text-primary);
+		font-size: 13px;
+		padding: var(--warp-space-xs) var(--warp-space-sm);
+		margin: 0;
+		outline: none;
+		height: 19px;
+		border-radius: 3px;
+		transition: border-color 0.2s ease;
 	}
 
-	/* Active state */
-	.file-item:active {
-		background: rgba(255, 255, 255, 0.15);
-		transform: scale(0.98);
+	.file-name-input:focus {
+		border-color: var(--warp-accent);
+	}
+
+	.file-name-input::placeholder {
+		color: var(--warp-text-disabled);
 	}
 </style>

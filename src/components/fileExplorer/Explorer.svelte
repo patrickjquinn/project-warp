@@ -1,8 +1,5 @@
-<script context="module" lang="ts">
-	type MenuAction = 'newFile' | 'newFolder' | 'paste';
-</script>
-
 <script lang="ts">
+	type MenuAction = 'newFile' | 'newFolder' | 'paste';
 	import { onMount, onDestroy } from 'svelte'
 	import { invoke } from '@tauri-apps/api/core'
 	import { listen } from '@tauri-apps/api/event'
@@ -10,6 +7,7 @@
 	import Folder from './Folder.svelte'
 	import type { FileNode } from './types'
 	import ContextMenu from './ContextMenu.svelte'
+	import { File, FolderOpen, Folder as FolderIcon } from 'lucide-svelte'
 
 	export let projectPath: string
 
@@ -308,7 +306,13 @@
 			>
 				{#if newItemEditing}
 					<div class="new-item">
-						<div class={newItemIsFolder ? "folder-icon" : "file-icon"}></div>
+						<div class="icon-wrapper">
+							{#if newItemIsFolder}
+								<FolderIcon size={16} />
+							{:else}
+								<File size={16} />
+							{/if}
+						</div>
 						<input
 							bind:this={newItemInputElement}
 							bind:value={newItemValue}
@@ -343,52 +347,13 @@
 />
 
 <style>
-	.new-item {
-		display: flex;
-		align-items: center;
-		padding-left: 1.5rem;
-		position: relative;
-		height: 1.5rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.new-item-input {
-		flex: 1;
-		background: #3c3c3c;
-		border: 1px solid #007fd4;
-		color: #cccccc;
-		font-size: 0.9rem;
-		padding: 0 0.3rem;
-		margin-right: 0.5rem;
-		outline: none;
-		height: 1.2rem;
-	}
-
-	.file-icon,
-	.folder-icon {
-		position: absolute;
-		left: 0.2rem;
-		width: 1rem;
-		height: 1rem;
-		background-size: contain;
-		background-repeat: no-repeat;
-		background-position: center;
-	}
-
-	.file-icon {
-		background-image: url(/static/assets/file.svg);
-	}
-
-	.folder-icon {
-		background-image: url(/static/assets/folder.svg);
-	}
-
 	main {
 		height: 100%;
 		width: 100%;
-		background-color: #1e1e1e;
+		background-color: var(--warp-bg-sidebar);
 		display: flex;
 		flex-direction: column;
+		color: var(--warp-text-primary);
 	}
 
 	.explorer-container {
@@ -398,21 +363,77 @@
 	}
 
 	.explorer-header {
-		padding: 0.5rem 1rem;
-		font-size: 0.8rem;
-		font-weight: bold;
-		color: #cccccc;
+		padding: 0 var(--warp-space-md);
+		height: var(--warp-header-height);
+		line-height: var(--warp-header-height);
+		font-size: 11px;
+		font-weight: 500;
 		text-transform: uppercase;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		color: var(--warp-text-secondary);
+		background-color: var(--warp-bg-sidebar);
+		letter-spacing: 0.1em;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.explorer-content {
 		flex: 1;
 		overflow-y: auto;
-		padding: 0.5rem;
+		padding: var(--warp-space-xs) 0;
+		background-color: var(--warp-bg-sidebar);
 	}
 
 	.explorer-content :global(*) {
-		user-select: none;
+		font-size: 13px;
+	}
+
+	.new-item {
+		display: flex;
+		align-items: center;
+		padding: 0 var(--warp-space-md) 0 calc(var(--warp-space-md) + var(--warp-explorer-indent));
+		position: relative;
+		height: 22px;
+		margin: 0;
+	}
+
+	.new-item-input {
+		flex: 1;
+		background-color: var(--warp-bg-panel);
+		border: 1px solid var(--warp-border);
+		color: var(--warp-text-primary);
+		font-size: 13px;
+		padding: var(--warp-space-xs) var(--warp-space-sm);
+		margin: 0;
+		outline: none;
+		height: 19px;
+		border-radius: 3px;
+		transition: border-color 0.2s ease;
+	}
+
+	.new-item-input:focus {
+		border-color: var(--warp-accent);
+	}
+
+	.new-item-input::placeholder {
+		color: var(--warp-text-disabled);
+	}
+
+	.icon-wrapper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		margin-right: var(--warp-space-sm);
+		color: var(--warp-text-secondary);
+	}
+
+	.icon-wrapper :global(svg) {
+		transition: color 0.2s ease;
+	}
+
+	.icon-wrapper:hover :global(svg) {
+		color: var(--warp-text-primary);
 	}
 </style>

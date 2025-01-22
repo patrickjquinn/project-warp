@@ -6,6 +6,7 @@
 	import { invoke } from '@tauri-apps/api/core'
 	import ContextMenu from './ContextMenu.svelte'
 	import type { FileNode, FileSelectedEvent } from './types'
+	import { ChevronRight, File as FileIcon, Folder as FolderIcon, FolderOpen } from 'lucide-svelte'
 
 	type MenuAction = 'newFile' | 'newFolder' | 'rename' | 'delete' | 'copy' | 'paste' | 'cut';
 
@@ -92,7 +93,6 @@
 
 	async function refreshFolder() {
 		try {
-			// Re-watch the directory after operations
 			await invoke('watch_path', { path })
 		} catch (error) {
 			console.error('Failed to refresh folder:', error)
@@ -104,7 +104,6 @@
 			toggle()
 			activeDirectory.set(path)
 			
-			// Start watching this directory for changes
 			try {
 				await invoke('watch_path', { path })
 			} catch (error) {
@@ -118,14 +117,10 @@
 	}
 
 	function handleFileSelected(event: CustomEvent<FileSelectedEvent>) {
-		// Log the received event
 		console.log('Folder received fileSelected event:', event.detail);
-		
-		// Forward the file selection event up
 		console.log('Folder forwarding event to Explorer');
 		dispatch('fileSelected', event.detail);
 		
-		// Also dispatch the editor event directly to ensure it reaches AppBuilder
 		console.log('Folder dispatching editorFileSelected event');
 		window.dispatchEvent(new CustomEvent('editorFileSelected', {
 			detail: event.detail,
@@ -134,7 +129,6 @@
 		}));
 	}
 
-	// Determine if a node is a directory
 	function isDirectory(node: FileNode): boolean {
 		return node.type === 'directory' || node.is_dir || !!node.children
 	}
@@ -228,6 +222,7 @@
 
 <div 
 	class="folder-item"
+	class:root
 	role="treeitem"
 	aria-expanded={expanded}
 	tabindex="0"
@@ -248,7 +243,18 @@
 	class:expanded={expanded}
 >
 	<div class="folder-content">
-		<div class="folder-icon"></div>
+		{#if !root}
+			<div class="expand-icon">
+				<ChevronRight size={14} />
+			</div>
+		{/if}
+		<div class="icon-wrapper">
+			{#if expanded}
+				<FolderOpen size={16} />
+			{:else}
+				<FolderIcon size={16} />
+			{/if}
+		</div>
 		{#if isEditing}
 			<input
 				bind:this={inputElement}
@@ -268,7 +274,13 @@
 		{#if newFileEditing}
 			<li>
 				<div class="new-item">
-					<div class={newItemIsFolder ? "folder-icon" : "file-icon"}></div>
+					<div class="icon-wrapper">
+						{#if newItemIsFolder}
+							<FolderIcon size={16} />
+						{:else}
+							<FileIcon size={16} />
+						{/if}
+					</div>
 					<input
 						bind:this={newFileInputElement}
 						bind:value={newFileValue}
@@ -319,93 +331,151 @@
 	.folder-name-input,
 	.new-item-input {
 		flex: 1;
-		background: #3c3c3c;
-		border: 1px solid #007fd4;
-		color: #cccccc;
-		font-size: 0.9rem;
-		padding: 0 0.3rem;
-		margin-right: 0.5rem;
+		background-color: var(--warp-bg-panel);
+		border: 1px solid var(--warp-border);
+		color: var(--warp-text-primary);
+		font-size: 13px;
+		padding: var(--warp-space-xs) var(--warp-space-sm);
+		margin: 0;
 		outline: none;
-		height: 1.2rem;
+		height: 19px;
+		border-radius: 3px;
+		transition: border-color 0.2s ease;
+	}
+
+	.folder-name-input:focus,
+	.new-item-input:focus {
+		border-color: var(--warp-accent);
 	}
 
 	.new-item {
 		display: flex;
 		align-items: center;
-		padding-left: 1.5rem;
+		padding: 0 var(--warp-space-md) 0 calc(var(--warp-space-md) + var(--warp-explorer-indent));
 		position: relative;
-		height: 1.5rem;
+		height: 22px;
 	}
 
-	.file-icon,
-	.folder-icon {
-		position: absolute;
-		left: 0.2rem;
-		width: 1rem;
-		height: 1rem;
-		background-size: contain;
-		background-repeat: no-repeat;
-		background-position: center;
+	.icon-wrapper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		margin-right: var(--warp-space-sm);
+		color: var(--warp-text-secondary);
+		flex-shrink: 0;
 	}
 
-	.file-icon {
-		background-image: url(/static/assets/file.svg);
-	}
-
-	.folder-icon {
-		background-image: url(/static/assets/folder.svg);
+	.icon-wrapper :global(svg) {
+		transition: color 0.2s ease;
 	}
 
 	.folder-item {
-		padding: 0.2rem 0;
-		font-weight: bold;
+		position: relative;
 		cursor: pointer;
-		color: white;
-		transition: background-color 0.2s;
+		color: var(--warp-text-primary);
+		transition: background-color 0.1s ease;
+		height: 22px;
+		display: flex;
+		align-items: center;
+	}
+
+	.folder-item:not(.root):hover {
+		background-color: var(--warp-hover);
+	}
+
+	.folder-item:focus {
+		outline: 1px solid var(--warp-accent);
+		outline-offset: -1px;
 	}
 
 	.folder-content {
 		display: flex;
 		align-items: center;
-		padding-left: 1.5rem;
-		position: relative;
-		height: 1.5rem;
+		padding-left: var(--warp-explorer-indent);
+		width: 100%;
+		height: 100%;
 	}
 
-	.folder-icon {
-		position: absolute;
-		left: 0.2rem;
-		width: 1rem;
-		height: 1rem;
-		background: url(/static/assets/folder.svg) center/contain no-repeat;
+	.expand-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		color: var(--warp-text-secondary);
+		transition: transform 0.15s ease;
+		margin-right: var(--warp-space-xs);
+		flex-shrink: 0;
 	}
 
-	.folder-item.expanded .folder-icon {
-		background-image: url(/static/assets/folder-open.svg);
+	.expand-icon :global(svg) {
+		width: 14px;
+		height: 14px;
+		transition: color 0.2s ease;
+	}
+
+	.folder-item.expanded > .folder-content .expand-icon {
+		transform: rotate(90deg);
+	}
+
+	.folder-item:hover .expand-icon :global(svg),
+	.folder-item:hover .icon-wrapper :global(svg) {
+		color: var(--warp-text-primary);
 	}
 
 	.folder-name {
-		margin-left: 0.3rem;
-	}
-
-	.folder-item:hover {
-		background-color: rgba(255, 255, 255, 0.1);
-	}
-
-	.root {
-		cursor: default;
+		font-size: 13px;
+		margin-left: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--warp-text-primary);
+		transition: color 0.2s ease;
 	}
 
 	ul {
-		padding: 0.2em 0 0 1rem;
 		margin: 0;
+		padding: 0;
 		list-style: none;
-		border-left: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	li {
-		padding: 0.2em 0;
-		color: white;
-		list-style: none;
+		position: relative;
+		padding: 0;
+		margin: 0;
+		padding-left: var(--warp-explorer-indent);
+	}
+
+	li::before {
+		content: "";
+		position: absolute;
+		left: calc(var(--warp-explorer-indent) / 2);
+		top: 0;
+		bottom: 0;
+		width: 1px;
+		background-color: var(--warp-border);
+		opacity: 0.5;
+	}
+
+	li:last-child::before {
+		height: 11px;
+	}
+
+	li::after {
+		content: "";
+		position: absolute;
+		left: calc(var(--warp-explorer-indent) / 2);
+		top: 11px;
+		width: calc(var(--warp-explorer-indent) / 2);
+		height: 1px;
+		background-color: var(--warp-border);
+		opacity: 0.5;
+	}
+
+	.root > ul > li::before,
+	.root > ul > li::after {
+		display: none;
 	}
 </style>

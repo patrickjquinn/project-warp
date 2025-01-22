@@ -11,34 +11,33 @@
 	let terminalElement: HTMLElement
 	let terminalController: xterm.Terminal
 	let termFit: fit.FitAddon
-	let currentPid: number | null = null
 	let unlisten: (() => void) | null = null
-	let isReady = false
-	let pendingCommands: string[] = []
 
-	const MODERN_DARK: xterm.ITheme = {
-		foreground: '#fffff',
-		background: '#1e1e1e',
-		black: '#073642',
-		blue: '#268bd2',
-		cyan: '#2aa198',
-		green: '#859900',
-		magenta: '#d33682',
-		red: '#dc322f',
-		white: '#eee8d5',
-		yellow: '#b58900',
-		brightBlack: '#002b36',
-		brightBlue: '#839496',
-		brightCyan: '#93a1a1',
-		brightGreen: '#586e75',
-		brightMagenta: '#6c71c4',
-		brightRed: '#cb4b16',
-		brightWhite: '#fdf6e3',
-		brightYellow: '#657b83'
+	const WARP_THEME: xterm.ITheme = {
+		foreground: '#E1E1E6', // warp-text-primary
+		background: '#1A1A1D', // warp-bg-main
+		cursor: '#6E44FF',    // warp-accent
+		cursorAccent: '#1A1A1D',
+		black: '#1A1A1D',
+		red: '#FF6B6B',
+		green: '#4CD964',
+		yellow: '#FFD93D',
+		blue: '#6E44FF',
+		magenta: '#FF44B4',
+		cyan: '#44DDFF',
+		white: '#E1E1E6',
+		brightBlack: '#666668', // warp-text-disabled
+		brightRed: '#FF8585',
+		brightGreen: '#66FF7F',
+		brightYellow: '#FFE156',
+		brightBlue: '#7E5AFF',
+		brightMagenta: '#FF5AC8',
+		brightCyan: '#5AE6FF',
+		brightWhite: '#FFFFFF'
 	}
 
-	let theme: xterm.ITheme = MODERN_DARK
-	let bgColor = '#1e1e1e'
+	let theme: xterm.ITheme = WARP_THEME
+	let bgColor = theme.background
 
 	$: {
 		if (terminalController) {
@@ -47,51 +46,39 @@
 		}
 	}
 
-	async function setupTerminalOutput() {
+	// Write data from the terminal to the pty
+	async function writeToPty(data: string) {
 		try {
-			// Listen for terminal output events
-			unlisten = await listen('terminal-output', (event) => {
-				const { pid, data } = event.payload as { pid: number; data: string }
-				if (pid === currentPid) {
-					terminalController.write(data)
-				}
-			})
+			await invoke('async_write_to_pty', { data })
 		} catch (error) {
-			console.error('Failed to setup terminal output:', error)
-			terminalController.write('\x1b[31mFailed to setup terminal output\x1b[m\r\n')
+			console.error('Failed to write to pty:', error)
+			terminalController.write('\x1b[31mError writing to terminal\x1b[m\r\n')
 		}
 	}
 
+	// Write data from pty to the terminal
 	async function writeToTerminal(data: string) {
-		if (!currentPid) {
-			pendingCommands.push(data)
-			return
-		}
-
-		try {
-			await invoke('write_to_terminal', {
-				pid: currentPid,
-				data
-			})
-		} catch (error) {
-			console.error('Failed to write to terminal:', error)
-			terminalController.write('\x1b[31mError writing to terminal\x1b[m\r\n')
-		}
+		return new Promise<void>((resolve) => {
+			terminalController.write(data, () => resolve())
+		})
 	}
 
 	async function initializeTerminal() {
 		try {
 			terminalController = new xterm.Terminal({
-				fontFamily: 'Fira Code, Iosevka, monospace',
-				fontSize: 12,
-				logLevel: 'debug',
+				fontFamily: 'Consolas, "Courier New", monospace',
+				fontSize: 13,
+				lineHeight: 1.2,
+				letterSpacing: 0,
 				theme,
 				allowProposedApi: true,
-				scrollback: 5000,
+				scrollback: 1000,
 				cursorBlink: true,
 				cursorStyle: 'block',
 				windowsMode: false,
 				convertEol: true,
+				minimumContrastRatio: 4.5,
+				drawBoldTextInBrightColors: true
 			})
 
 			termFit = new fit.FitAddon()
@@ -99,21 +86,30 @@
 			terminalController.open(terminalElement)
 			termFit.fit()
 
-			terminalController.write('\x1b[32mWelcome to Warp Code!\x1b[m\r\n')
+			terminalController.write('\x1b[32mWelcome to WarpCode Terminal\x1b[m\r\n\r\n')
 
-			// Create terminal session
-			currentPid = await invoke('create_terminal_session')
-			await setupTerminalOutput()
+			// Initialize shell and handle terminal data
+			await invoke('async_create_shell').catch((error) => {
+				console.error('Error creating shell:', error)
+			})
+
+			terminalController.onData(writeToPty)
 			
-			// Handle terminal input
-			terminalController.onData(writeToTerminal)
-			
-			// Process any pending commands
-			isReady = true
-			while (pendingCommands.length > 0) {
-				const cmd = pendingCommands.shift()
-				if (cmd) await writeToTerminal(cmd)
+			// Set up continuous reading from PTY
+			async function readFromPty() {
+				try {
+					const data = await invoke<string>('async_read_from_pty')
+					if (data) {
+						await writeToTerminal(data)
+					}
+					window.requestAnimationFrame(readFromPty)
+				} catch (error) {
+					console.error('Failed to read from pty:', error)
+					window.requestAnimationFrame(readFromPty)
+				}
 			}
+			window.requestAnimationFrame(readFromPty)
+
 		} catch (error) {
 			console.error('Failed to initialize terminal:', error)
 			if (terminalController) {
@@ -122,14 +118,14 @@
 		}
 	}
 
-	function handleTermResize() {
+	async function handleTermResize() {
 		if (termFit && terminalController) {
 			try {
-				const dimensions = termFit.proposeDimensions()
-				if (dimensions) {
-					terminalController.resize(dimensions.cols, dimensions.rows)
-					// TODO: Send new dimensions to backend when implemented
-				}
+				termFit.fit()
+				await invoke('async_resize_pty', {
+					rows: terminalController.rows,
+					cols: terminalController.cols,
+				})
 			} catch (error) {
 				console.error('Failed to resize terminal:', error)
 			}
@@ -140,41 +136,79 @@
 		await initializeTerminal()
 	})
 
-	onDestroy(async () => {
-		if (unlisten) {
-			unlisten()
-		}
-		if (currentPid) {
-			try {
-				await invoke('kill_terminal_session', { pid: currentPid })
-			} catch (error) {
-				console.error('Failed to kill terminal session:', error)
-			}
-		}
+	onDestroy(() => {
 		if (terminalController) {
 			terminalController.dispose()
 		}
 	})
 </script>
 
-<div id="terminal" bind:this={terminalElement} use:watchResize={handleTermResize} />
+<div class="terminal-container">
+	<div id="terminal" bind:this={terminalElement} use:watchResize={handleTermResize} />
+</div>
 
 <svelte:window on:resize={handleTermResize} />
 
 <style>
-	:global(.terminal) {
+	.terminal-container {
 		height: 100%;
 		width: 100%;
-	}
-
-	:global(.terminal .xterm-viewport) {
-		height: 100% !important;
-		padding: 10px;
+		background-color: var(--warp-bg-main);
+		padding: var(--warp-space-xs) 0;
 	}
 
 	#terminal {
-		margin: 0;
 		height: 100%;
 		width: 100%;
+	}
+
+	:global(.terminal) {
+		padding: 0 var(--warp-space-md);
+	}
+
+	:global(.terminal .xterm-viewport) {
+		scrollbar-width: thin;
+		scrollbar-color: var(--warp-border) transparent;
+	}
+
+	:global(.terminal .xterm-viewport::-webkit-scrollbar) {
+		width: 10px;
+	}
+
+	:global(.terminal .xterm-viewport::-webkit-scrollbar-track) {
+		background: transparent;
+	}
+
+	:global(.terminal .xterm-viewport::-webkit-scrollbar-thumb) {
+		background-color: var(--warp-border);
+		border: 2px solid var(--warp-bg-main);
+		border-radius: 5px;
+	}
+
+	:global(.terminal .xterm-viewport::-webkit-scrollbar-thumb:hover) {
+		background-color: var(--warp-border-light);
+	}
+
+	:global(.terminal .xterm-viewport::-webkit-scrollbar-thumb:active) {
+		background-color: var(--warp-text-secondary);
+	}
+
+	:global(.terminal .xterm-screen) {
+		padding: 0;
+	}
+
+	:global(.terminal .xterm-rows) {
+		padding: var(--warp-space-xs) 0;
+	}
+
+	:global(.terminal .xterm-selection div) {
+		background-color: var(--warp-accent-transparent) !important;
+		opacity: 1 !important;
+		position: absolute;
+	}
+
+	:global(.terminal:focus .xterm-cursor) {
+		background-color: var(--warp-accent) !important;
+		color: var(--warp-bg-main) !important;
 	}
 </style>

@@ -18,7 +18,6 @@
 	export let code: string
 	export let lang: string
 
-	// Auto-save delay in milliseconds
 	const AUTO_SAVE_DELAY = 1000
 
 	interface LanguageConfig {
@@ -29,7 +28,7 @@
 
 	const languageConfig: Record<string, LanguageConfig> = {
 		svelte: {
-			name: 'html', // Using HTML mode for Svelte until we add proper Svelte support
+			name: 'html',
 			extensions: ['.svelte'],
 			aliases: ['Svelte', 'svelte']
 		},
@@ -111,10 +110,7 @@
 
 	function updateEditorValue() {
 		if (editor) {
-			// Check if the editor is focused
-			if (editor.hasWidgetFocus()) {
-				// Let the user edit with no interference
-			} else {
+			if (!editor.hasWidgetFocus()) {
 				if (editor.getValue() !== code) {
 					const position = editor.getPosition()
 					editor.setValue(code)
@@ -126,19 +122,16 @@
 	}
 
 	function getMonacoLanguage(lang: string): string {
-		// First check if it's a direct match
 		if (languageConfig[lang]) {
 			return languageConfig[lang].name
 		}
 
-		// Then check aliases
 		for (const [key, config] of Object.entries(languageConfig)) {
 			if (config.aliases.includes(lang.toLowerCase())) {
 				return config.name
 			}
 		}
 
-		// Default to plaintext if no match found
 		return 'plaintext'
 	}
 
@@ -161,7 +154,6 @@
 	let codeUpdateHandler: ((event: Event) => void) | null = null;
 
 	onMount(async () => {
-		// Setup code update listener
 		codeUpdateHandler = (event: Event) => {
 			const customEvent = event as CustomEvent;
 			if (customEvent.detail.content !== code) {
@@ -171,7 +163,6 @@
 		};
 		window.addEventListener('codeUpdated', codeUpdateHandler);
 
-		// Setup Monaco workers
 		self.MonacoEnvironment = {
 			getWorker(_: any, label: string) {
 				if (label === 'json') {
@@ -193,16 +184,56 @@
 		const monaco = await import('monaco-editor')
 		Monaco = monaco
 
+		// Define WarpCode theme
+		Monaco.editor.defineTheme('warpcode-dark', {
+			base: 'vs-dark',
+			inherit: true,
+			rules: [
+				{ token: 'comment', foreground: '666668', fontStyle: 'italic' },
+				{ token: 'string', foreground: '4CD964' },
+				{ token: 'keyword', foreground: '6E44FF' },
+				{ token: 'number', foreground: 'FFD93D' },
+				{ token: 'operator', foreground: 'E1E1E6' },
+				{ token: 'type', foreground: '44DDFF' },
+				{ token: 'class', foreground: '44DDFF' },
+				{ token: 'function', foreground: 'FF44B4' },
+				{ token: 'variable', foreground: 'E1E1E6' },
+				{ token: 'parameter', foreground: 'E1E1E6' }
+			],
+			colors: {
+				'editor.background': '#1A1A1D',
+				'editor.foreground': '#E1E1E6',
+				'editor.lineHighlightBackground': '#242428',
+				'editor.selectionBackground': '#6E44FF33',
+				'editor.inactiveSelectionBackground': '#6E44FF19',
+				'editorLineNumber.foreground': '#666668',
+				'editorLineNumber.activeForeground': '#E1E1E6',
+				'editorCursor.foreground': '#6E44FF',
+				'editorWhitespace.foreground': '#2A2A2E',
+				'editorIndentGuide.background': '#2A2A2E',
+				'editorIndentGuide.activeBackground': '#333337',
+				'editor.selectionHighlightBackground': '#6E44FF19',
+				'editor.wordHighlightBackground': '#6E44FF19',
+				'editor.wordHighlightStrongBackground': '#6E44FF33',
+				'editorBracketMatch.background': '#6E44FF19',
+				'editorBracketMatch.border': '#6E44FF'
+			}
+		})
+
 		const editorOptions: monacoEditor.editor.IStandaloneEditorConstructionOptions = {
 			value: code,
 			language: lang,
-			theme: 'vs-dark',
+			theme: 'warpcode-dark',
 			automaticLayout: true,
 			formatOnPaste: true,
 			formatOnType: true,
 			tabSize: 2,
 			minimap: {
-				enabled: false
+				enabled: true,
+				scale: 2,
+				showSlider: 'mouseover',
+				renderCharacters: false,
+				maxColumn: 120
 			},
 			scrollBeyondLastLine: false,
 			smoothScrolling: true,
@@ -219,27 +250,62 @@
 			wordBasedSuggestions: 'allDocuments',
 			lineNumbers: 'on',
 			renderWhitespace: 'selection',
-			bracketPairColorization: {
-				enabled: true
-			},
 			guides: {
 				bracketPairs: 'active',
 				indentation: true,
-				highlightActiveIndentation: true
+				highlightActiveIndentation: true,
+				bracketPairsHorizontal: 'active'
 			},
-			fontFamily: 'Fira Code, monospace',
-			fontSize: 14,
+			fontFamily: 'Consolas, "Courier New", monospace',
+			fontSize: 13,
 			lineHeight: 1.5,
 			padding: {
-				top: 10,
-				bottom: 10
+				top: 4,
+				bottom: 4
+			},
+			scrollbar: {
+				vertical: 'visible',
+				horizontal: 'visible',
+				verticalScrollbarSize: 14,
+				horizontalScrollbarSize: 14,
+				verticalHasArrows: false,
+				horizontalHasArrows: false,
+				useShadows: true
+			},
+			overviewRulerBorder: false,
+			overviewRulerLanes: 0,
+			hideCursorInOverviewRuler: true,
+			renderLineHighlight: 'line',
+			roundedSelection: true,
+			selectOnLineNumbers: true,
+			selectionHighlight: true,
+			occurrencesHighlight: 'singleFile',
+			colorDecorators: true,
+			folding: true,
+			foldingStrategy: 'auto',
+			showFoldingControls: 'mouseover',
+			matchBrackets: 'always',
+			find: {
+				addExtraSpaceOnTop: false,
+				autoFindInSelection: 'never',
+				seedSearchStringFromSelection: 'always'
+			},
+			links: true,
+			mouseWheelScrollSensitivity: 1,
+			multiCursorModifier: 'alt',
+			accessibilitySupport: 'off',
+			dragAndDrop: false,
+			gotoLocation: {
+				multipleDeclarations: 'peek',
+				multipleDefinitions: 'peek',
+				multipleImplementations: 'peek',
+				multipleReferences: 'peek',
+				multipleTypeDefinitions: 'peek'
 			}
 		}
 
-		// Configure Monaco editor
 		editor = Monaco.editor.create(divEl, editorOptions)
 
-		// Setup keyboard shortcuts
 		editor.addCommand(Monaco.KeyMod.CtrlCmd | Monaco.KeyCode.KeyS, () => {
 			const currentValue = editor.getValue()
 			if (currentValue !== code) {
@@ -248,13 +314,8 @@
 			}
 		})
 
-		// Setup content change handler
 		editor.onDidChangeModelContent((e) => {
-			if (e.isFlush) {
-				// true if setValue call
-				/* editor.setValue(code); */
-			} else {
-				// User input
+			if (!e.isFlush) {
 				const updatedValue = editor?.getValue() ?? ' '
 				if (updatedValue !== code) {
 					code = updatedValue
@@ -288,14 +349,79 @@
 	}
 
 	:global(.monaco-editor .margin) {
-		background-color: #1e1e1e !important;
+		background-color: var(--warp-bg-main) !important;
 	}
 
 	:global(.monaco-editor .monaco-scrollable-element) {
 		box-shadow: none !important;
 	}
 
-	:global(.monaco-editor) {
-		padding: 0.5rem;
+	:global(.monaco-editor .scrollbar) {
+		background-color: transparent !important;
+	}
+
+	:global(.monaco-editor .scrollbar .slider) {
+		background-color: var(--warp-border) !important;
+		border-radius: 5px !important;
+		transition: background-color 0.2s ease !important;
+	}
+
+	:global(.monaco-editor .scrollbar .slider:hover) {
+		background-color: var(--warp-border-light) !important;
+	}
+
+	:global(.monaco-editor .scrollbar .slider:active) {
+		background-color: var(--warp-text-secondary) !important;
+	}
+
+	:global(.monaco-editor .minimap) {
+		box-shadow: -1px 0 0 var(--warp-border) !important;
+	}
+
+	:global(.monaco-editor .minimap-slider) {
+		opacity: 0;
+		transition: opacity 0.2s ease;
+	}
+
+	:global(.monaco-editor:hover .minimap-slider) {
+		opacity: 1;
+	}
+
+	:global(.monaco-editor .cursors-layer .cursor) {
+		transition: all 80ms ease;
+	}
+
+	:global(.monaco-editor .line-numbers) {
+		font-family: Consolas, "Courier New", monospace !important;
+		font-size: 13px !important;
+		line-height: 1.5 !important;
+		color: var(--warp-text-secondary) !important;
+	}
+
+	:global(.monaco-editor .current-line) {
+		border: none !important;
+		background-color: var(--warp-hover) !important;
+	}
+
+	:global(.monaco-editor .view-overlays .current-line) {
+		border: none !important;
+	}
+
+	:global(.monaco-editor .margin-view-overlays .current-line-margin) {
+		border: none !important;
+	}
+
+	:global(.monaco-editor .suggest-widget) {
+		background-color: var(--warp-bg-panel) !important;
+		border: 1px solid var(--warp-border) !important;
+		border-radius: 4px !important;
+	}
+
+	:global(.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused) {
+		background-color: var(--warp-hover) !important;
+	}
+
+	:global(.monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover) {
+		background-color: var(--warp-hover) !important;
 	}
 </style>

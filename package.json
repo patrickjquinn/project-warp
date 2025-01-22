@@ -19,6 +19,7 @@
     "cssbeautify": "^0.3.1",
     "himalaya": "^1.1.0",
     "json-to-css": "^0.1.0",
+    "lucide-svelte": "^0.473.0",
     "monaco-editor": "^0.52.2",
     "svelte": "^4.2.19",
     "svelte-awesome": "^3.3.5",

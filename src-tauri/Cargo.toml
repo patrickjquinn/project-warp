@@ -36,6 +36,7 @@ chrono = { version = "0.4.38", features = ["clock", "serde"] }
 notify = "6.1"
 dirs = "5.0"
 urlencoding = "2.1"
+portable-pty = "0.8.1"
 
 [features]
 default = ["custom-protocol"]

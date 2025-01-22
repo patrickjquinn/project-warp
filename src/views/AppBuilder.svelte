@@ -1,460 +1,767 @@
 <script lang="ts">
-	import { HSplitPane, VSplitPane } from 'svelte-split-pane'
-	import { onMount, onDestroy } from 'svelte'
-	import Editor from '../components/Editor.svelte'
-	import UIPallete from '../components/canvas/UIPallete.svelte'
-	import UICanvas from '../components/canvas/UICanvas.svelte'
-	import LayoutEditor from '../components/canvas/LayoutEditor.svelte'
-	import StyleEditor from '../components/canvas/StyleEditor.svelte'
-	import { Explorer } from '../components/fileExplorer'
-	import Terminal from '../components/Terminal.svelte'
-	import Warp from '../assets/warpwhite.png'
-	import OnlyTabs from '../components/tabs/OnlyTabs.svelte'
-	import activeFile from '../stores/activeFile'
-	import { invoke } from '@tauri-apps/api/core'
-	import { listen } from '@tauri-apps/api/event'
-	import { syncManager } from '../modules/warp/codeMap/sync'
-	import { canvasStore } from '../components/canvas/stores/canvasStore'
-	import type { CanvasItem } from '../components/canvas/types'
+import { HSplitPane, VSplitPane } from 'svelte-split-pane'
+import { onMount, onDestroy } from 'svelte'
+import Editor from '../components/Editor.svelte'
+import UIPallete from '../components/canvas/UIPallete.svelte'
+import UICanvas from '../components/canvas/UICanvas.svelte'
+import LayoutEditor from '../components/canvas/LayoutEditor.svelte'
+import StyleEditor from '../components/canvas/StyleEditor.svelte'
+import { Explorer } from '../components/fileExplorer'
+import Terminal from '../components/Terminal.svelte'
+import SearchBar from '../components/SearchBar.svelte'
+import SearchPanel from '../components/SearchPanel.svelte'
+import { panelStore, type PanelType } from '../stores/panelStore'
+import { layoutStore } from '../stores/layoutStore'
+import {
+  Files,
+  Search,
+  GitBranch,
+  Play,
+  Puzzle,
+  User,
+  Settings,
+  Globe,
+  FileText,
+  Type,
+  AlignJustify,
+  Code,
+  Bug,
+  Package,
+  ChevronLeft,
+  ChevronRight,
+  Terminal as TerminalIcon,
+  Layout,
+  Edit3
+} from 'lucide-svelte'
+import OnlyTabs from '../components/tabs/OnlyTabs.svelte'
+import activeFile from '../stores/activeFile'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { syncManager } from '../modules/warp/codeMap/sync'
+import { canvasStore } from '../components/canvas/stores/canvasStore'
+import type { CanvasItem } from '../components/canvas/types'
+import { searchStore } from '../stores/searchStore'
 
-	// Get project path from URL
-	let projectPath: string = ''
-	onMount(() => {
-		const hash = window.location.hash // e.g. "#/editor?path=..."
-		const queryString = hash.split('?')[1] // Get everything after the ?
-		if (queryString) {
-			const params = new URLSearchParams(queryString)
-			const path = params.get('path')
-			if (path) {
-				projectPath = decodeURIComponent(path)
-				console.log('Project path:', projectPath)
-			}
-		}
-	})
+let projectPath: string = ''
 
-	let editorItems: CanvasItem[] = [];
-	
-	// Subscribe to canvas store to keep editorItems in sync
-	$: if (shouldShowCanvas && $canvasStore.items) {
-		console.log('Canvas store updated:', $canvasStore.items);
-		editorItems = $canvasStore.items;
-	}
+function handleGlobalSearch(event: CustomEvent<string>) {
+  const query = event.detail;
+  if (query.trim()) {
+    searchStore.search(projectPath, query);
+    panelStore.showPanel('search');
+  }
+}
 
-	let consoleTabs: Array<Record<string, unknown>> = [
-		{ label: 'TERMINAL', value: 1 },
-		{ label: 'PROBLEMS', value: 2 },
-		{ label: 'OUTPUT', value: 3 }
-	]
+onMount(() => {
+  const hash = window.location.hash
+  const queryString = hash.split('?')[1]
+  if (queryString) {
+    const params = new URLSearchParams(queryString)
+    const path = params.get('path')
+    if (path) {
+      projectPath = decodeURIComponent(path)
+      console.log('Project path:', projectPath)
+    }
+  }
+})
 
-	let activeConsoleTab = 1
-	let shouldShowCanvas = false
-	let activeEditorTab = 1
-	let lang = 'html'
+let editorItems: CanvasItem[] = [];
 
-	const onEditorTabUpdate = (event: CustomEvent) => {
-		activeEditorTab = event.detail
-	}
+$: if (shouldShowCanvas && $canvasStore.items) {
+  console.log('Canvas store updated:', $canvasStore.items);
+  editorItems = $canvasStore.items;
+}
 
-	const onConsoleTabUpdate = (event: CustomEvent) => {
-		activeConsoleTab = event.detail
-	}
+let consoleTabs = [
+  { label: 'TERMINAL', value: 1 },
+  { label: 'PROBLEMS', value: 2 },
+  { label: 'OUTPUT', value: 3 },
+  { label: 'DEBUG CONSOLE', value: 4 }
+]
 
-	let currentCode = '/** Code Will Appear Here **/'
-	let editorTabs: Array<Record<string, unknown>> = []
+let activeConsoleTab = 1
+let shouldShowCanvas = false
+let activeEditorTab = 1
+let lang = 'html'
 
-	const upControlTabs: Array<Record<string, unknown>> = [
-		{ label: 'Widgets', value: 1 },
-		{ label: 'Layout', value: 2 },
-		{ label: 'Style', value: 3 }
-	]
+const onEditorTabUpdate = (event: CustomEvent) => {
+  activeEditorTab = event.detail
+}
 
-	const updateCanvas = async (code?: string) => {
-		console.log('updateCanvas called with:', { code, shouldShowCanvas });
-		
-		if (code) {
-			currentCode = code;
-		}
-		
-		// Always try to sync code to canvas
-		if (shouldShowCanvas) {
-			console.log('Updating canvas with code:', currentCode);
-			await syncManager.updateCanvasFromCode(currentCode);
-		}
-	}
+const onConsoleTabUpdate = (event: CustomEvent) => {
+  activeConsoleTab = event.detail
+}
 
-	const shouldCanvasShowByFile = (file: any) => {
-		// Log file info for debugging
-		console.log('Checking file:', file);
-		
-		if (!file?.path) {
-			console.log('No file path provided');
-			return false;
-		}
+let currentCode = '/** Code Will Appear Here **/'
+let editorTabs: Array<Record<string, unknown>> = []
 
-		// Normalize path to use forward slashes
-		const normalizedPath = file.path.replace(/\\/g, '/');
-		console.log('Normalized path:', normalizedPath);
-		
-		const isSvelteFile = file?.name?.toLowerCase().includes('.svelte');
-		const pathParts = normalizedPath.split('/');
-		const srcIndex = pathParts.indexOf('src');
-		
-		// Check if file is in src directory
-		if (srcIndex === -1) {
-			console.log('File not in src directory');
-			return false;
-		}
+const upControlTabs = [
+  { label: 'Widgets', value: 1 },
+  { label: 'Layout', value: 2 },
+  { label: 'Style', value: 3 }
+]
 
-		// Get the path parts after src/
-		const pathAfterSrc = pathParts.slice(srcIndex + 1);
-		console.log('Path after src:', pathAfterSrc);
-		
-		const isInSpecialDir = pathAfterSrc.some(part => 
-			['components', 'pages', 'lib', 'routes'].includes(part)
-		);
-		const isRootSvelte = pathAfterSrc.length === 1;
-		
-		console.log('Path checks:', {
-			isSvelteFile,
-			isInSpecialDir,
-			isRootSvelte,
-			pathAfterSrc
-		});
-		
-		if (isSvelteFile && (isInSpecialDir || isRootSvelte)) {
-			console.log('Setting shouldShowCanvas to true');
-			shouldShowCanvas = true;
-			// Update canvas immediately and again after a delay
-			updateCanvas();
-			setTimeout(() => {
-				updateCanvas();
-			}, 300);
-			return
-		}
-		shouldShowCanvas = false
-	}
+const updateCanvas = async (code?: string) => {
+  if (code) {
+    currentCode = code;
+  }
+  
+  if (shouldShowCanvas) {
+    await syncManager.updateCanvasFromCode(currentCode);
+  }
+}
 
-	let fileSelectedDirectHandler: ((event: Event) => void) | null = null
-	let fileSelectedHandler: ((event: Event) => void) | null = null
+const shouldCanvasShowByFile = (file: any) => {
+  if (!file?.path) {
+    return false;
+  }
 
-	onMount(async () => {
-		fileSelectedDirectHandler = async (event: Event) => {
-			const customEvent = event as CustomEvent;
-			console.log('AppBuilder received editorFileSelected event:', customEvent.detail);
-			
-			// Ensure we have a valid file object
-			if (!customEvent.detail?.path) {
-				console.error('Invalid file object received:', customEvent.detail);
-				return;
-			}
-			
-			shouldCanvasShowByFile(customEvent.detail);
-			activeFile.set(customEvent.detail);
-			
-			// Update editor tabs
-			const existingTabIndex = editorTabs.findIndex(tab => tab.path === customEvent.detail.path)
-			if (existingTabIndex !== -1) {
-				editorTabs.splice(existingTabIndex, 1)
-			}
-			
-			editorTabs.unshift({
-				label: customEvent.detail.name,
-				value: 1,
-				path: customEvent.detail.path,
-				type: customEvent.detail.type
-			})
-			incrementTabs(customEvent.detail)
+  const normalizedPath = file.path.replace(/\\/g, '/');
+  const isSvelteFile = file?.name?.toLowerCase().includes('.svelte');
+  const pathParts = normalizedPath.split('/');
+  const srcIndex = pathParts.indexOf('src');
+  
+  if (srcIndex === -1) {
+    return false;
+  }
 
-			lang = fileExtension(customEvent.detail.name)
-			try {
-				const content = await invoke<string>('read_file_content', { path: customEvent.detail.path });
-				currentCode = content;
-				if (shouldShowCanvas) {
-					console.log('Setting active file in sync manager:', customEvent.detail.path);
-					await syncManager.setActiveFile(customEvent.detail.path);
-				}
-				updateCanvas(content);
-			} catch (error) {
-				console.error('Failed to read file:', error);
-			}
-		}
+  const pathAfterSrc = pathParts.slice(srcIndex + 1);
+  const isInSpecialDir = pathAfterSrc.some(part => 
+    ['components', 'pages', 'lib', 'routes'].includes(part)
+  );
+  const isRootSvelte = pathAfterSrc.length === 1;
+  
+  if (isSvelteFile && (isInSpecialDir || isRootSvelte)) {
+    shouldShowCanvas = true;
+    updateCanvas();
+    setTimeout(() => {
+      updateCanvas();
+    }, 300);
+    return
+  }
+  shouldShowCanvas = false
+}
 
-		fileSelectedHandler = async (event: Event) => {
-			const customEvent = event as CustomEvent;
-			console.log('AppBuilder received fileSelected event:', customEvent.detail);
-			
-			// Ensure we have a valid file object
-			if (!customEvent.detail?.path) {
-				console.error('Invalid file object received:', customEvent.detail);
-				return;
-			}
-			
-			activeFile.set(customEvent.detail);
-			shouldCanvasShowByFile(customEvent.detail);
+let fileSelectedDirectHandler: ((event: Event) => void) | null = null
+let fileSelectedHandler: ((event: Event) => void) | null = null
 
-			// Update editor tabs
-			const existingTabIndex = editorTabs.findIndex(tab => tab.path === customEvent.detail.path)
-			if (existingTabIndex !== -1) {
-				editorTabs.splice(existingTabIndex, 1)
-			}
+onMount(async () => {
+  fileSelectedDirectHandler = async (event: Event) => {
+    const customEvent = event as CustomEvent;
+    if (!customEvent.detail?.path) {
+      return;
+    }
+    
+    shouldCanvasShowByFile(customEvent.detail);
+    activeFile.set(customEvent.detail);
+    
+    const existingTabIndex = editorTabs.findIndex(tab => tab.path === customEvent.detail.path)
+    if (existingTabIndex !== -1) {
+      editorTabs.splice(existingTabIndex, 1)
+    }
+    
+    editorTabs.unshift({
+      label: customEvent.detail.name,
+      value: 1,
+      path: customEvent.detail.path,
+      type: customEvent.detail.type
+    })
+    incrementTabs(customEvent.detail)
 
-			editorTabs.unshift({
-				label: customEvent.detail.name,
-				value: 1,
-				path: customEvent.detail.path,
-				type: customEvent.detail.type
-			})
+    lang = fileExtension(customEvent.detail.name)
+    try {
+      const content = await invoke<string>('read_file_content', { path: customEvent.detail.path });
+      currentCode = content;
+      if (shouldShowCanvas) {
+        await syncManager.setActiveFile(customEvent.detail.path);
+      }
+      updateCanvas(content);
+    } catch (error) {
+      console.error('Failed to read file:', error);
+    }
+  }
 
-			incrementTabs(customEvent.detail)
+  fileSelectedHandler = async (event: Event) => {
+    const customEvent = event as CustomEvent;
+    if (!customEvent.detail?.path) {
+      return;
+    }
+    
+    activeFile.set(customEvent.detail);
+    shouldCanvasShowByFile(customEvent.detail);
 
-			lang = fileExtension(customEvent.detail.name)
-			try {
-				const content = await invoke<string>('read_file_content', { path: customEvent.detail.path })
-				currentCode = content
-				updateCanvas(content)
-			} catch (error) {
-				console.error('Failed to read file:', error)
-			}
-		}
+    const existingTabIndex = editorTabs.findIndex(tab => tab.path === customEvent.detail.path)
+    if (existingTabIndex !== -1) {
+      editorTabs.splice(existingTabIndex, 1)
+    }
 
-		// Log when event listeners are added
-		console.log('Adding event listeners');
-		window.addEventListener('editorFileSelected', fileSelectedDirectHandler);
-		window.addEventListener('fileSelected', fileSelectedHandler);
+    editorTabs.unshift({
+      label: customEvent.detail.name,
+      value: 1,
+      path: customEvent.detail.path,
+      type: customEvent.detail.type
+    })
 
-		// Read README if it exists in the project
-		if (projectPath) {
-			try {
-				const readmePath = `${projectPath}/README.md`
-				const content = await invoke<string>('read_file_content', { path: readmePath })
-				currentCode = content
-				lang = 'markdown'
-			} catch (error) {
-				console.error('Failed to read README:', error)
-			}
-		}
-	})
+    incrementTabs(customEvent.detail)
 
-	onDestroy(() => {
-		if (fileSelectedDirectHandler) {
-			window.removeEventListener('editorFileSelected', fileSelectedDirectHandler)
-		}
-		if (fileSelectedHandler) {
-			window.removeEventListener('fileSelected', fileSelectedHandler)
-		}
-	})
+    lang = fileExtension(customEvent.detail.name)
+    try {
+      const content = await invoke<string>('read_file_content', { path: customEvent.detail.path })
+      currentCode = content
+      updateCanvas(content)
+    } catch (error) {
+      console.error('Failed to read file:', error)
+    }
+  }
 
-	const fileExtension = (name: string | string[]) => {
-		if (!name) return 'html'
-		const extension = name.toString().slice(name.toString().lastIndexOf('.') + 1)
+  window.addEventListener('editorFileSelected', fileSelectedDirectHandler);
+  window.addEventListener('fileSelected', fileSelectedHandler);
 
-		switch (extension) {
-			case 'svelte':
-				return 'svelte'
-			case 'js':
-				return 'javascript'
-			case 'ts':
-				return 'typescript'
-			case 'json':
-				return 'json'
-			case 'xml':
-				return 'html'
-			case 'html':
-				return 'svelte'
-			case 'md':
-				return 'markdown'
-			case 'css':
-				return 'css'
-			default:
-				return 'plaintext'
-		}
-	}
+  if (projectPath) {
+    try {
+      const readmePath = `${projectPath}/README.md`
+      const content = await invoke<string>('read_file_content', { path: readmePath })
+      currentCode = content
+      lang = 'markdown'
+    } catch (error) {
+      console.error('Failed to read README:', error)
+    }
+  }
+})
 
-	const incrementTabs = (file: any) => {
-		editorTabs = editorTabs.map((tab, index) => ({
-			...tab,
-			value: index + 1
-		}))
-	}
+onDestroy(() => {
+  if (fileSelectedDirectHandler) {
+    window.removeEventListener('editorFileSelected', fileSelectedDirectHandler)
+  }
+  if (fileSelectedHandler) {
+    window.removeEventListener('fileSelected', fileSelectedHandler)
+  }
+})
 
-	function handleCanvasAction(event: CustomEvent<CanvasItem[]>) {
-		console.log('Canvas action:', event.detail);
-		canvasStore.setItems(event.detail);
-	}
+const fileExtension = (name: string | string[]) => {
+  if (!name) return 'html'
+  const extension = name.toString().slice(name.toString().lastIndexOf('.') + 1)
+
+  switch (extension) {
+    case 'svelte':
+      return 'svelte'
+    case 'js':
+      return 'javascript'
+    case 'ts':
+      return 'typescript'
+    case 'json':
+      return 'json'
+    case 'xml':
+      return 'html'
+    case 'html':
+      return 'svelte'
+    case 'md':
+      return 'markdown'
+    case 'css':
+      return 'css'
+    default:
+      return 'plaintext'
+  }
+}
+
+const incrementTabs = (file: any) => {
+  editorTabs = editorTabs.map((tab, index) => ({
+    ...tab,
+    value: index + 1
+  }))
+}
+
+function handleCanvasAction(event: CustomEvent<CanvasItem[]>) {
+  console.log('Canvas action:', event.detail);
+  canvasStore.setItems(event.detail);
+}
 </script>
 
-<main>
-	<div id="header"></div>
-	<div id="contents_wrapper">
-		<div class="sidenav">
-			<div class="icon-bar">
-				<a class="active first-nav" href="/#"><img width="20" height="20" src="{Warp}" alt="" /></a>
-			</div>
-		</div>
-		<div class="wrapper">
-			<HSplitPane
-				leftPaneSize="{shouldShowCanvas ? '60%' : '100%'}"
-				rightPaneSize="{shouldShowCanvas ? '40%' : '0%'}"
-				minLeftPaneSize="250px"
-				minRightPaneSize="0"
-				updateCallback="{() => {
-					console.log('HSplitPane Updated!')
-				}}"
-			>
-				<!-- Files explorer and editor -->
-				<left slot="left">
-					<HSplitPane
-						leftPaneSize="20%"
-						rightPaneSize="80%"
-						minLeftPaneSize="150px"
-						minRightPaneSize="300px"
-						updateCallback="{() => {
-							console.log('HSplitPane Updated!')
-						}}"
-					>
-						<left slot="left">
-							{#if projectPath}
-								<Explorer {projectPath} />
-							{/if}
-						</left>
-						<right slot="right">
-							<VSplitPane
-								topPanelSize="75%"
-								downPanelSize="25%"
-								minTopPaneSize="200px"
-								minDownPaneSize="100px"
-							>
-								<top slot="top">
-									<Editor bind:lang="{lang}" bind:code="{currentCode}" onAction="{updateCanvas}" />
-								</top>
-								<down slot="down">
-									<!-- Terminal, console, output -->
-									<div class="console-container">
-										<OnlyTabs items="{consoleTabs}" add="{false}" on:message="{onConsoleTabUpdate}" />
-										{#if activeConsoleTab === 1}
-											<Terminal />
-										{:else if activeConsoleTab === 2}
-											<div class="console-panel">No problems found</div>
-										{:else}
-											<div class="console-panel">No output</div>
-										{/if}
-									</div>
-								</down>
-							</VSplitPane>
-						</right>
-					</HSplitPane>
-				</left>
-				<!-- Canvas and palette -->
-				<right slot="right">
-					{#if shouldShowCanvas}
-						<HSplitPane
-							leftPaneSize="60%"
-							rightPaneSize="40%"
-							minLeftPaneSize="300px"
-							minRightPaneSize="200px"
-							updateCallback="{() => {
-								console.log('HSplitPane Updated!')
-							}}"
-						>
-							<left slot="left">
-								<!-- UI canvas -->
-								<UICanvas bind:items={editorItems} on:action={handleCanvasAction} />
-							</left>
-							<right slot="right">
-								<!-- Widget, style, layout tabs for the active item -->
-								<OnlyTabs on:message="{onEditorTabUpdate}" items="{upControlTabs}" add="{false}" />
-								<div class="control-panel">
-									{#if activeEditorTab === 1}
-										<UIPallete />
-									{:else if activeEditorTab === 2}
-										<LayoutEditor />
-									{:else}
-										<StyleEditor />
-									{/if}
-								</div>
-							</right>
-						</HSplitPane>
-					{/if}
-				</right>
-			</HSplitPane>
-		</div>
-	</div>
-</main>
+<div class="workbench">
+  <div class="titlebar">
+    <div class="titlebar-content">
+      <div class="window-title">
+        {#if projectPath}
+          {projectPath.split('/').pop()} - WarpCode
+        {:else}
+          WarpCode
+        {/if}
+      </div>
+      <div class="navigation">
+        <button class="nav-button" title="Back">
+          <ChevronLeft size={16} />
+        </button>
+        <button class="nav-button" title="Forward">
+          <ChevronRight size={16} />
+        </button>
+      </div>
+      <div class="global-search">
+        <SearchBar on:search={handleGlobalSearch} />
+      </div>
+      <div class="panel-toggles">
+        <button 
+          class="toggle-button" 
+          class:active={$layoutStore.isTerminalVisible}
+          title="Toggle Terminal"
+          on:click={() => layoutStore.toggleTerminal()}
+        >
+          <TerminalIcon size={16} />
+        </button>
+        {#if shouldShowCanvas}
+          <button 
+            class="toggle-button"
+            class:active={$layoutStore.isCanvasVisible}
+            title="Toggle UI Canvas"
+            on:click={() => layoutStore.toggleCanvas()}
+          >
+            <Layout size={16} />
+          </button>
+        {/if}
+        <button 
+          class="toggle-button"
+          class:active={$layoutStore.isEditorVisible}
+          title="Toggle Editor"
+          on:click={() => layoutStore.toggleEditor()}
+        >
+          <Edit3 size={16} />
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="activitybar">
+      <div class="top">
+        <div 
+          class="activity-item" 
+          class:active={$panelStore.activePanel === 'explorer'}
+          title="Explorer"
+          on:click={() => panelStore.togglePanel('explorer')}
+        >
+          <Files size={24} />
+        </div>
+        <div 
+          class="activity-item" 
+          class:active={$panelStore.activePanel === 'search'}
+          title="Search"
+          on:click={() => panelStore.togglePanel('search')}
+        >
+          <Search size={24} />
+        </div>
+        <div 
+          class="activity-item" 
+          class:active={$panelStore.activePanel === 'sourceControl'}
+          title="Source Control"
+          on:click={() => panelStore.togglePanel('sourceControl')}
+        >
+          <GitBranch size={24} />
+        </div>
+        <div 
+          class="activity-item" 
+          class:active={$panelStore.activePanel === 'debug'}
+          title="Run and Debug"
+          on:click={() => panelStore.togglePanel('debug')}
+        >
+          <Bug size={24} />
+        </div>
+        <div 
+          class="activity-item" 
+          class:active={$panelStore.activePanel === 'extensions'}
+          title="Extensions"
+          on:click={() => panelStore.togglePanel('extensions')}
+        >
+          <Package size={24} />
+        </div>
+      </div>
+      <div class="bottom">
+        <div 
+          class="activity-item" 
+          class:active={$panelStore.activePanel === 'settings'}
+          title="Settings"
+          on:click={() => panelStore.togglePanel('settings')}
+        >
+          <Settings size={24} />
+        </div>
+      </div>
+    </div>
+
+    <HSplitPane
+      leftPaneSize="{shouldShowCanvas ? '60%' : '100%'}"
+      rightPaneSize="{shouldShowCanvas ? '40%' : '0%'}"
+      minLeftPaneSize="250px"
+      minRightPaneSize="0"
+    >
+      <left slot="left">
+        <HSplitPane
+          leftPaneSize="20%"
+          rightPaneSize="80%"
+          minLeftPaneSize="170px"
+          minRightPaneSize="300px"
+        >
+          <left slot="left">
+            {#if $panelStore.isVisible}
+              {#if $panelStore.activePanel === 'explorer' && projectPath}
+                <Explorer {projectPath} />
+              {:else if $panelStore.activePanel === 'search'}
+                <SearchPanel {projectPath} />
+              {:else if $panelStore.activePanel === 'sourceControl'}
+                <div class="panel-placeholder">Source Control Panel (Coming Soon)</div>
+              {:else if $panelStore.activePanel === 'debug'}
+                <div class="panel-placeholder">Debug Panel (Coming Soon)</div>
+              {:else if $panelStore.activePanel === 'extensions'}
+                <div class="panel-placeholder">Extensions Panel (Coming Soon)</div>
+              {:else if $panelStore.activePanel === 'settings'}
+                <div class="panel-placeholder">Settings Panel (Coming Soon)</div>
+              {/if}
+            {/if}
+          </left>
+          <right slot="right">
+            <VSplitPane
+              topPanelSize={$layoutStore.isEditorVisible ? "70%" : "0%"}
+              downPanelSize={$layoutStore.isTerminalVisible ? "30%" : "0%"}
+              minTopPaneSize={$layoutStore.isEditorVisible ? "100px" : "0"}
+              minDownPaneSize={$layoutStore.isTerminalVisible ? "100px" : "0"}
+            >
+              <top slot="top">
+                <div class="editor-container">
+                  <Editor bind:lang="{lang}" bind:code="{currentCode}" onAction="{updateCanvas}" />
+                </div>
+              </top>
+              <down slot="down">
+                <div class="panel-container">
+                  <OnlyTabs items="{consoleTabs}" add="{false}" on:message="{onConsoleTabUpdate}" />
+                  <div class="panel-content">
+                    {#if activeConsoleTab === 1}
+                      <Terminal />
+                    {:else if activeConsoleTab === 2}
+                      <div class="panel-message">No problems found</div>
+                    {:else if activeConsoleTab === 3}
+                      <div class="panel-message">No output</div>
+                    {:else}
+                      <div class="panel-message">Debug console</div>
+                    {/if}
+                  </div>
+                </div>
+              </down>
+            </VSplitPane>
+          </right>
+        </HSplitPane>
+      </left>
+      <right slot="right">
+        {#if shouldShowCanvas}
+          <HSplitPane
+            leftPaneSize={$layoutStore.isCanvasVisible ? "60%" : "0%"}
+            rightPaneSize={$layoutStore.isCanvasVisible ? "40%" : "100%"}
+            minLeftPaneSize={$layoutStore.isCanvasVisible ? "300px" : "0"}
+            minRightPaneSize="200px"
+          >
+            <left slot="left">
+              <div class="canvas-container">
+                <UICanvas bind:items={editorItems} on:action={handleCanvasAction} />
+              </div>
+            </left>
+            <right slot="right">
+              <div class="control-container">
+                <OnlyTabs on:message="{onEditorTabUpdate}" items="{upControlTabs}" add="{false}" />
+                <div class="control-content">
+                  {#if activeEditorTab === 1}
+                    <UIPallete />
+                  {:else if activeEditorTab === 2}
+                    <LayoutEditor />
+                  {:else}
+                    <StyleEditor />
+                  {/if}
+                </div>
+              </div>
+            </right>
+          </HSplitPane>
+        {/if}
+      </right>
+    </HSplitPane>
+  </div>
+
+  <footer class="statusbar">
+    <div class="left">
+      <span class="status-item">
+        <Globe size={16} />
+        WarpCode
+      </span>
+      <span class="status-item">
+        <FileText size={16} />
+        UTF-8
+      </span>
+    </div>
+    <div class="right">
+      <span class="status-item">
+        <Code size={16} />
+        {lang}
+      </span>
+      <span class="status-item">
+        <Type size={16} />
+        Spaces: 2
+      </span>
+      <span class="status-item">
+        <AlignJustify size={16} />
+        LF
+      </span>
+    </div>
+  </footer>
+</div>
 
 <style>
-	#contents_wrapper {
-		width: 100vw;
-		height: 95vh;
-		background-color: #1e1e1e;
-	}
-	.wrapper {
-		height: 100%;
-		margin-left: 3vw;
-	}
-	#header {
-		width: 100%;
-		height: 5vh;
-		line-height: 5vh;
-		background-color: #2f4f4f;
-		-webkit-app-region: drag;
-	}
-	.sidenav {
-		height: 95vh;
-		width: 3vw;
-		z-index: 1;
-		float: left;
-		top: 0;
-		left: 0;
-		background-color: #282828;
-		overflow-x: hidden;
-		padding-top: 0px;
-		color: white !important;
-	}
-	.icon-bar {
-		height: 100%;
-		width: 100%;
-		text-align: center;
-	}
+  .workbench {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--warp-bg-main);
+    color: var(--warp-text-primary);
+  }
 
-	.first-nav {
-		margin-top: 0 !important;
-	}
+  .titlebar {
+    height: calc(var(--warp-titlebar-height) + 16px);
+    background-color: var(--warp-bg-black);
+    color: var(--warp-text-primary);
+    -webkit-app-region: drag;
+    user-select: none;
+    font-size: 12px;
+    border-bottom: 1px solid var(--warp-border);
+    padding: 8px 0;
+  }
 
-	.icon-bar a {
-		padding: 15px;
-		opacity: 70%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin-top: 20px;
-	}
+  .titlebar-content {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--warp-space-md);
+    gap: var(--warp-space-md);
+  }
 
-	.icon-bar a:hover {
-		background-color: #555;
-	}
+  .window-title {
+    font-weight: normal;
+    min-width: 200px;
+    color: var(--warp-text-secondary);
+  }
 
-	.active {
-		background-color: black;
-		opacity: 100% !important;
-	}
+  .navigation {
+    display: flex;
+    align-items: center;
+    gap: var(--warp-space-sm);
+    margin-right: var(--warp-space-md);
+    -webkit-app-region: no-drag;
+  }
 
-	.console-container {
-		height: 100%;
-		background-color: #1e1e1e;
-		color: #cccccc;
-	}
+  .nav-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: none;
+    background: none;
+    color: var(--warp-text-secondary);
+    cursor: pointer;
+    transition: all var(--warp-transition-normal);
+  }
 
-	.console-panel {
-		padding: 1rem;
-		height: calc(100% - 30px);
-		overflow: auto;
-		font-family: monospace;
-		font-size: 12px;
-	}
+  .nav-button:hover {
+    background-color: var(--warp-hover);
+    color: var(--warp-text-primary);
+  }
 
-	.control-panel {
-		height: calc(100% - 30px);
-		overflow: auto;
-		background-color: #1e1e1e;
-	}
+  .global-search {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    -webkit-app-region: no-drag;
+    padding: 0 200px;
+  }
+
+  .panel-toggles {
+    display: flex;
+    align-items: center;
+    gap: var(--warp-space-sm);
+    margin-left: var(--warp-space-md);
+    -webkit-app-region: no-drag;
+  }
+
+  .toggle-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: none;
+    background: none;
+    color: var(--warp-text-secondary);
+    cursor: pointer;
+    transition: all var(--warp-transition-normal);
+  }
+
+  .toggle-button:hover {
+    background-color: var(--warp-hover);
+    color: var(--warp-text-primary);
+  }
+
+  .toggle-button.active {
+    color: var(--warp-accent);
+  }
+
+  .hidden {
+    display: none;
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .activitybar {
+    width: var(--warp-activitybar-width);
+    background-color: var(--warp-bg-black);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--warp-space-sm) 0;
+    z-index: var(--warp-z-base);
+    border-right: 1px solid var(--warp-border);
+  }
+
+  .activity-item {
+    width: var(--warp-activitybar-width);
+    height: var(--warp-activitybar-width);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--warp-text-secondary);
+    cursor: pointer;
+    position: relative;
+    transition: all var(--warp-transition-normal);
+  }
+
+  .activity-item:hover {
+    color: var(--warp-text-primary);
+    background-color: var(--warp-hover);
+  }
+
+  .activity-item.active {
+    color: var(--warp-accent);
+    background-color: var(--warp-bg-main);
+  }
+
+  .activity-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--warp-accent);
+    box-shadow: 0 0 8px var(--warp-accent);
+  }
+
+  .panel-placeholder {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--warp-text-secondary);
+    font-style: italic;
+    padding: var(--warp-space-md);
+    background-color: var(--warp-bg-panel);
+    border-right: 1px solid var(--warp-border);
+  }
+
+  .editor-container {
+    height: 100%;
+    background-color: var(--warp-bg-main);
+  }
+
+  .canvas-container {
+    height: 100%;
+    background-color: var(--warp-bg-main);
+  }
+
+  .panel-container {
+    height: 100%;
+    background-color: var(--warp-bg-main);
+    border-top: 1px solid var(--warp-border);
+  }
+
+  .panel-content {
+    height: calc(100% - var(--warp-header-height));
+    overflow: auto;
+  }
+
+  .panel-message {
+    padding: var(--warp-space-md);
+    color: var(--warp-text-secondary);
+    font-size: 13px;
+  }
+
+  .control-container {
+    height: 100%;
+    background-color: var(--warp-bg-panel);
+    border-left: 1px solid var(--warp-border);
+  }
+
+  .control-content {
+    height: calc(100% - var(--warp-header-height));
+    overflow: auto;
+  }
+
+  .statusbar {
+    height: 22px;
+    background-color: var(--warp-bg-panel);
+    color: var(--warp-text-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0;
+    font-size: 12px;
+    border-top: 1px solid var(--warp-border);
+  }
+
+  .status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--warp-space-xs);
+    padding: 0 var(--warp-space-sm);
+    height: 100%;
+    border-right: 1px solid var(--warp-border);
+    cursor: pointer;
+    color: var(--warp-text-secondary);
+    transition: all 0.2s ease;
+  }
+
+  .status-item:hover {
+    background-color: var(--warp-hover);
+    color: var(--warp-text-primary);
+  }
+
+  :global(.splitpane) {
+    background-color: var(--warp-bg-main) !important;
+  }
+
+  :global(.splitpane-divider) {
+    background-color: var(--warp-border) !important;
+    border: none !important;
+    transition: background-color 0.2s ease;
+  }
+
+  :global(.splitpane-divider:hover) {
+    background-color: var(--warp-accent) !important;
+  }
+
+  :global(.splitpane-divider.horizontal) {
+    height: 1px !important;
+  }
+
+  :global(.splitpane-divider.vertical) {
+    width: 1px !important;
+  }
 </style>
